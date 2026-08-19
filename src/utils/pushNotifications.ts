@@ -1,5 +1,5 @@
 import { getSetting, saveSetting, saveNotificationLog } from './indexedDB';
-import { supabase, isSupabaseConfigured } from './supabaseClient';
+import { supabase, isSupabaseConfigured, saveRemoteNotificationToSupabase } from './supabaseClient';
 import type { PushSubscriptionData, NotificationLog } from '../types';
 
 const PUBLIC_VAPID_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || 'BEl62iUYgUivxIkv69yViEuiBIa-59y-vD3-p8_J93Jp39-5_k';
@@ -125,6 +125,7 @@ export async function sendAdminPushNotification(targetUserId: string, message: s
 
   await saveNotificationLog(logEntry);
 
+  // 1. Show notification on current local device
   if ('Notification' in window && Notification.permission === 'granted') {
     if ('serviceWorker' in navigator) {
       const reg = await navigator.serviceWorker.ready;
@@ -139,6 +140,10 @@ export async function sendAdminPushNotification(targetUserId: string, message: s
     }
   }
 
+  // 2. Save to Supabase notification_history for cross-device polling (iPhone + Android sync)
+  await saveRemoteNotificationToSupabase(logEntry);
+
+  // 3. Invoke Web Push edge function if available
   if (supabase) {
     try {
       const { error } = await supabase.functions.invoke('send-push', {

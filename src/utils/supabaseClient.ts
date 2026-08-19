@@ -191,3 +191,107 @@ export async function fetchRemoteEntriesFromSupabase(localDate: string) {
     return [];
   }
 }
+
+/**
+ * Deletes a single entry from Supabase
+ */
+export async function deleteRemoteEntryFromSupabase(entryId: string) {
+  const client = getSupabaseClient();
+  if (!client) return false;
+
+  try {
+    const { error } = await client
+      .from('hydration_entries')
+      .delete()
+      .eq('id', entryId);
+
+    if (error) console.warn('Supabase entry delete error:', error.message);
+    return !error;
+  } catch (e) {
+    console.warn('Error deleting remote entry:', e);
+    return false;
+  }
+}
+
+/**
+ * Deletes all hydration entries for a specific user and date from Supabase (for Reset Today's Water)
+ */
+export async function deleteRemoteEntriesForDateFromSupabase(userId: string, localDate: string) {
+  const client = getSupabaseClient();
+  if (!client) return false;
+
+  try {
+    const { error } = await client
+      .from('hydration_entries')
+      .delete()
+      .eq('user_id', userId)
+      .eq('local_date', localDate);
+
+    if (error) console.warn('Supabase reset entries delete error:', error.message);
+    return !error;
+  } catch (e) {
+    console.warn('Error deleting remote entries for date:', e);
+    return false;
+  }
+}
+
+/**
+ * Saves custom admin/partner notifications to Supabase table for cross-device notification polling
+ */
+export async function saveRemoteNotificationToSupabase(logEntry: any) {
+  const client = getSupabaseClient();
+  if (!client) return false;
+
+  try {
+    const { error } = await client
+      .from('notification_history')
+      .upsert({
+        id: logEntry.id,
+        user_id: logEntry.userId,
+        message: logEntry.message,
+        type: logEntry.type,
+        sent_at: logEntry.sentAt,
+        status: 'sent',
+      }, { onConflict: 'id' });
+
+    if (error) console.warn('Supabase notification history save error:', error.message);
+    return !error;
+  } catch (e) {
+    console.warn('Error saving remote notification:', e);
+    return false;
+  }
+}
+
+/**
+ * Fetches recent notifications targeted at myUserId or 'all' from Supabase
+ */
+export async function fetchRemoteNotificationsFromSupabase(myUserId: string) {
+  const client = getSupabaseClient();
+  if (!client) return [];
+
+  try {
+    const { data, error } = await client
+      .from('notification_history')
+      .select('*')
+      .or(`user_id.eq.${myUserId},user_id.eq.all`)
+      .order('sent_at', { ascending: false })
+      .limit(10);
+
+    if (error) {
+      console.warn('Fetch remote notifications error:', error.message);
+      return [];
+    }
+
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      userId: row.user_id,
+      message: row.message,
+      type: row.type,
+      sentAt: row.sent_at,
+      status: row.status,
+    }));
+  } catch (e) {
+    console.warn('Error fetching remote notifications:', e);
+    return [];
+  }
+}

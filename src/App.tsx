@@ -10,6 +10,7 @@ import {
   getSetting,
   saveSetting,
   getNotificationLogs,
+  saveNotificationLog,
   getAllUnsyncedEntries,
 } from './utils/indexedDB';
 import { getLocalDateString, calculateDailyGoalMl } from './utils/hydrationGoal';
@@ -18,6 +19,9 @@ import {
   fetchRemoteEntriesFromSupabase,
   syncProfilesWithSupabase,
   fetchProfilesFromSupabase,
+  fetchRemoteNotificationsFromSupabase,
+  deleteRemoteEntryFromSupabase,
+  deleteRemoteEntriesForDateFromSupabase,
 } from './utils/supabaseClient';
 import {
   requestPushSubscription,
@@ -56,6 +60,7 @@ export const App: React.FC = () => {
   const [showInstallGuideModal, setShowInstallGuideModal] = useState<boolean>(false);
 
   const [notificationLogs, setNotificationLogs] = useState<NotificationLog[]>([]);
+  const [shownNotifIds, setShownNotifIds] = useState<Set<string>>(new Set());
 
   const todayStr = getLocalDateString();
 
@@ -71,6 +76,9 @@ export const App: React.FC = () => {
       if (savedReminders) setReminderSettings(savedReminders);
       setSoundEnabled(savedSound ?? true);
       setNotificationLogs(logs);
+
+      const initialShown = new Set(logs.map(l => l.id));
+      setShownNotifIds(initialShown);
 
       let currentProfiles = storedProfiles;
       if (!currentProfiles || currentProfiles.length === 0) {
@@ -118,7 +126,6 @@ export const App: React.FC = () => {
       }
       setTodayEntriesMap(map);
 
-      // Perform online sync on mount
       if (navigator.onLine) {
         triggerOfflineSyncAndFetch();
       }
@@ -135,12 +142,11 @@ export const App: React.FC = () => {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Online periodic sync every 15s to keep all devices and profile names updated live
     const syncInterval = setInterval(() => {
       if (navigator.onLine) {
         triggerOfflineSyncAndFetch();
       }
-    }, 15000);
+    }, 10000);
 
     initLocalHydrationReminders(() => activeProfile?.name || '');
 
@@ -166,11 +172,36 @@ export const App: React.FC = () => {
         if (found) setActiveProfile(found);
       }
     } else if (profiles.length > 0) {
-      // Sync local profiles to Supabase if Supabase has no data
       await syncProfilesWithSupabase(profiles);
     }
 
-    // 2. Upload unsynced local hydration entries
+    // 2. Fetch custom remote notifications sent from partner (iPhone + Android sync)
+    if (myUserId) {
+      const remoteNotifs = await fetchRemoteNotificationsFromSupabase(myUserId);
+      for (const notif of remoteNotifs) {
+        if (!shownNotifIds.has(notif.id)) {
+          shownNotifIds.add(notif.id);
+          await saveNotificationLog(notif);
+          setNotificationLogs(prev => [notif, ...prev]);
+
+          if ('Notification' in window && Notification.permission === 'granted') {
+            if ('serviceWorker' in navigator) {
+              const reg = await navigator.serviceWorker.ready;
+              reg.showNotification('HydraLove 💧', {
+                body: notif.message,
+                icon: 'icon-192.png',
+                badge: 'icon-192.png',
+                vibrate: [200, 100, 200],
+              });
+            } else {
+              new Notification('HydraLove 💧', { body: notif.message, icon: 'icon-192.png' });
+            }
+          }
+        }
+      }
+    }
+
+    // 3. Upload unsynced local hydration entries
     const unsynced = await getAllUnsyncedEntries();
     if (unsynced.length > 0) {
       const success = await syncOfflineEntriesWithSupabase(unsynced);
@@ -181,20 +212,18 @@ export const App: React.FC = () => {
       }
     }
 
-    // 3. Fetch remote entries from Supabase to sync both users' water data
+    // 4. Fetch remote entries from Supabase to sync both users' water data
     const remoteEntries = await fetchRemoteEntriesFromSupabase(todayStr);
-    if (remoteEntries.length > 0) {
-      const map: Record<string, HydrationEntry[]> = {};
-      for (const entry of remoteEntries) {
-        await saveEntryToDB(entry);
-        if (!map[entry.userId]) map[entry.userId] = [];
-        map[entry.userId].push(entry);
-      }
-      setTodayEntriesMap(prev => ({
-        ...prev,
-        ...map,
-      }));
+    const map: Record<string, HydrationEntry[]> = {};
+    for (const p of profiles) {
+      map[p.id] = [];
     }
+    for (const entry of remoteEntries) {
+      await saveEntryToDB(entry);
+      if (!map[entry.userId]) map[entry.userId] = [];
+      map[entry.userId].push(entry);
+    }
+    setTodayEntriesMap(map);
   };
 
   const handleDeviceOnboardingComplete = async (selectedUserId: string, weightKg: number) => {
@@ -240,9 +269,6 @@ export const App: React.FC = () => {
   };
 
   const handleSaveProfileNames = async (u1Name: string, u2Name: string) => {
-    const p1 = profiles.find(p => p.id === 'user_1');
-    const p2 = profiles.find(p => p.id === 'user_2');
-
     const updated = profiles.map(p => {
       if (p.id === 'user_1') return { ...p, name: u1Name, roleLabel: u1Name };
       if (p.id === 'user_2') return { ...p, name: u2Name, roleLabel: u2Name };
@@ -259,7 +285,6 @@ export const App: React.FC = () => {
       if (found) setActiveProfile(found);
     }
 
-    // Sync updated names to Supabase immediately so all devices update!
     await syncProfilesWithSupabase(updated);
   };
 
@@ -301,6 +326,7 @@ export const App: React.FC = () => {
     }
 
     await deleteEntryFromDB(entryId);
+    await deleteRemoteEntryFromSupabase(entryId);
 
     setTodayEntriesMap(prev => {
       const currentList = prev[activeProfile.id] || [];
@@ -318,7 +344,6 @@ export const App: React.FC = () => {
     if (activeProfile?.id === updatedProfile.id) {
       setActiveProfile(updatedProfile);
     }
-    // Sync profile edits to Supabase
     await syncProfilesWithSupabase(updatedProfiles);
   };
 
@@ -340,6 +365,8 @@ export const App: React.FC = () => {
     for (const e of currentList) {
       await deleteEntryFromDB(e.id);
     }
+    await deleteRemoteEntriesForDateFromSupabase(activeProfile.id, todayStr);
+
     setTodayEntriesMap(prev => ({ ...prev, [activeProfile.id]: [] }));
   };
 
