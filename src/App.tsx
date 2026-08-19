@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { UserProfile, HydrationEntry, ReminderSettings, NotificationLog } from './types';
 import {
   getProfileFromDB,
@@ -15,6 +15,7 @@ import {
 } from './utils/indexedDB';
 import { getLocalDateString, calculateDailyGoalMl } from './utils/hydrationGoal';
 import {
+  supabase,
   syncOfflineEntriesWithSupabase,
   fetchRemoteEntriesFromSupabase,
   syncProfilesWithSupabase,
@@ -28,6 +29,7 @@ import {
   sendAdminPushNotification,
   initLocalHydrationReminders,
 } from './utils/pushNotifications';
+import { playCelebrationSound } from './utils/soundEffects';
 
 import { WelcomeOnboarding } from './components/WelcomeOnboarding';
 import { MainHydrationView } from './components/MainHydrationView';
@@ -66,9 +68,54 @@ export const App: React.FC = () => {
   const [showInstallGuideModal, setShowInstallGuideModal] = useState<boolean>(false);
 
   const [notificationLogs, setNotificationLogs] = useState<NotificationLog[]>([]);
-  const [shownNotifIds, setShownNotifIds] = useState<Set<string>>(new Set());
+  const [inAppToast, setInAppToast] = useState<string | null>(null);
+
+  // Ref to track shown notification IDs without closure bugs
+  const shownNotifIdsRef = useRef<Set<string>>(new Set());
 
   const todayStr = getLocalDateString();
+
+  const handleIncomingNotification = async (notif: { id: string; userId: string; message: string; type?: string; sentAt?: string }) => {
+    if (shownNotifIdsRef.current.has(notif.id)) return;
+
+    shownNotifIdsRef.current.add(notif.id);
+
+    const logEntry: NotificationLog = {
+      id: notif.id,
+      userId: notif.userId,
+      message: notif.message,
+      type: (notif.type as any) || 'admin_custom',
+      sentAt: notif.sentAt || new Date().toISOString(),
+      status: 'sent',
+    };
+
+    await saveNotificationLog(logEntry);
+    setNotificationLogs(prev => [logEntry, ...prev]);
+
+    // Show in-app banner toast
+    setInAppToast(`💕 Partner: ${notif.message}`);
+    setTimeout(() => setInAppToast(null), 7000);
+    playCelebrationSound();
+
+    // Trigger OS level push notification
+    if ('Notification' in window && Notification.permission === 'granted') {
+      try {
+        if ('serviceWorker' in navigator) {
+          const reg = await navigator.serviceWorker.ready;
+          await reg.showNotification('HydraLove 💧', {
+            body: notif.message,
+            icon: 'apple-touch-icon.png',
+            badge: 'apple-touch-icon.png',
+            vibrate: [200, 100, 200],
+          });
+        } else {
+          new Notification('HydraLove 💧', { body: notif.message, icon: 'apple-touch-icon.png' });
+        }
+      } catch (err) {
+        console.warn('Error popping OS notification:', err);
+      }
+    }
+  };
 
   useEffect(() => {
     async function loadInitialData() {
@@ -83,8 +130,9 @@ export const App: React.FC = () => {
       setSoundEnabled(savedSound ?? true);
       setNotificationLogs(logs);
 
-      const initialShown = new Set(logs.map(l => l.id));
-      setShownNotifIds(initialShown);
+      for (const l of logs) {
+        shownNotifIdsRef.current.add(l.id);
+      }
 
       let currentProfiles = storedProfiles;
       if (!currentProfiles || currentProfiles.length === 0) {
@@ -148,12 +196,25 @@ export const App: React.FC = () => {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Fast 3-second polling interval so all devices receive custom push notifications live!
+    // Fast 3-second polling interval for cloud notification fallback
     const syncInterval = setInterval(() => {
       if (navigator.onLine) {
         triggerOfflineSyncAndFetch();
       }
     }, 3000);
+
+    // Subscribe to Supabase Realtime Broadcast Channel for instant real-time push!
+    let realtimeChannel: any = null;
+    if (supabase) {
+      realtimeChannel = supabase.channel('hydralove_global_push');
+      realtimeChannel
+        .on('broadcast', { event: 'custom_push' }, (eventData: any) => {
+          if (eventData?.payload) {
+            handleIncomingNotification(eventData.payload);
+          }
+        })
+        .subscribe();
+    }
 
     initLocalHydrationReminders(() => activeProfile?.name || '');
 
@@ -161,6 +222,9 @@ export const App: React.FC = () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
       clearInterval(syncInterval);
+      if (realtimeChannel && supabase) {
+        supabase.removeChannel(realtimeChannel);
+      }
     };
   }, [myUserId]);
 
@@ -185,30 +249,7 @@ export const App: React.FC = () => {
     // 2. Fetch custom remote notifications sent from other devices (iPhone + Android sync)
     const remoteNotifs = await fetchRemoteNotificationsFromSupabase(myUserId);
     for (const notif of remoteNotifs) {
-      if (!shownNotifIds.has(notif.id)) {
-        setShownNotifIds(prev => new Set(prev).add(notif.id));
-        await saveNotificationLog(notif);
-        setNotificationLogs(prev => [notif, ...prev]);
-
-        // Pop notification on receiving device!
-        if ('Notification' in window && Notification.permission === 'granted') {
-          try {
-            if ('serviceWorker' in navigator) {
-              const reg = await navigator.serviceWorker.ready;
-              await reg.showNotification('HydraLove 💧', {
-                body: notif.message,
-                icon: 'apple-touch-icon.png',
-                badge: 'apple-touch-icon.png',
-                vibrate: [200, 100, 200],
-              });
-            } else {
-              new Notification('HydraLove 💧', { body: notif.message, icon: 'apple-touch-icon.png' });
-            }
-          } catch (err) {
-            console.warn('Error displaying remote notification on device:', err);
-          }
-        }
-      }
+      await handleIncomingNotification(notif);
     }
 
     // 3. Upload unsynced local hydration entries
@@ -394,6 +435,9 @@ export const App: React.FC = () => {
   };
 
   const handleSendCustomNotification = async (targetUserId: string, message: string) => {
+    const notifId = `notif_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    shownNotifIdsRef.current.add(notifId); // Do not pop notification on self
+
     const success = await sendAdminPushNotification(targetUserId, message, myUserId);
     const updatedLogs = await getNotificationLogs();
     setNotificationLogs(updatedLogs);
@@ -422,6 +466,14 @@ export const App: React.FC = () => {
       {!isOnline && (
         <div className="bg-amber-400 text-amber-950 font-bold text-[11px] py-1 text-center shadow-xs">
           Offline Mode • Saving water data locally 💧
+        </div>
+      )}
+
+      {/* In-app Toast Banner for partner notifications */}
+      {inAppToast && (
+        <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 max-w-xs w-11/12 bg-gradient-to-r from-pink-500 to-purple-600 text-white font-extrabold text-xs px-4 py-3 rounded-2xl shadow-xl border-2 border-white flex items-center justify-between animate-bounce">
+          <span>{inAppToast}</span>
+          <button onClick={() => setInAppToast(null)} className="ml-2 text-white/80 hover:text-white">✕</button>
         </div>
       )}
 

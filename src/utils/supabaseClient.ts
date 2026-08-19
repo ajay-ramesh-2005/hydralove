@@ -236,26 +236,41 @@ export async function deleteRemoteEntriesForDateFromSupabase(userId: string, loc
 }
 
 /**
- * Saves custom admin/partner notifications to Supabase table for cross-device notification polling
+ * Saves custom admin/partner notifications to Supabase table for cross-device notification polling & realtime broadcast
  */
 export async function saveRemoteNotificationToSupabase(logEntry: any, senderUserId?: string) {
   const client = getSupabaseClient();
   if (!client) return false;
 
   try {
+    const payload = {
+      id: logEntry.id,
+      user_id: logEntry.userId,
+      message: logEntry.message,
+      type: logEntry.type || 'admin_custom',
+      sent_at: logEntry.sentAt || new Date().toISOString(),
+      status: 'sent',
+    };
+
+    // 1. Save to Supabase table
     const { error } = await client
       .from('notification_history')
-      .upsert({
-        id: logEntry.id,
-        user_id: logEntry.userId,
-        message: logEntry.message,
-        type: logEntry.type || 'admin_custom',
-        sent_at: logEntry.sentAt || new Date().toISOString(),
-        status: 'sent',
-      }, { onConflict: 'id' });
+      .upsert(payload, { onConflict: 'id' });
 
     if (error) console.warn('Supabase notification history save error:', error.message);
-    return !error;
+
+    // 2. Broadcast via Supabase Realtime Channel for instant zero-latency delivery to all connected devices!
+    const channel = client.channel('hydralove_global_push');
+    await channel.send({
+      type: 'broadcast',
+      event: 'custom_push',
+      payload: {
+        ...payload,
+        senderUserId: senderUserId || 'admin',
+      },
+    });
+
+    return true;
   } catch (e) {
     console.warn('Error saving remote notification:', e);
     return false;
