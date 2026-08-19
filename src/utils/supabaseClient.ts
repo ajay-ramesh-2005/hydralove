@@ -39,6 +39,9 @@ export function getSupabaseClient(): SupabaseClient | null {
   }
 }
 
+export const supabase = getSupabaseClient();
+export const isSupabaseConfigured = Boolean(supabase || getSupabaseCredentials().url);
+
 export function saveSupabaseCredentials(url: string, key: string) {
   if (url.trim()) {
     localStorage.setItem('hydralove_supabase_url', url.trim());
