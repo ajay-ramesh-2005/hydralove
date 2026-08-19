@@ -4,16 +4,16 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: './', // Ensures GitHub Pages loads all JS, CSS, and manifest assets cleanly regardless of repo subpath
+  base: './',
   plugins: [
     react(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {
-        name: 'HydraLove • Kawaii Hydration Companion',
+        name: 'HydraLove',
         short_name: 'HydraLove',
-        description: 'A cute mobile-first hydration reminder companion app for two.',
+        description: 'HydraLove PWA',
         theme_color: '#FFF0F5',
         background_color: '#FFF0F5',
         display: 'standalone',
