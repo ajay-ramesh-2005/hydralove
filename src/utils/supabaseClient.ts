@@ -1,19 +1,22 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
+const HARDCODED_SUPABASE_URL = 'https://obrdtnkgcrjqgvzdbbge.supabase.co';
+const HARDCODED_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9icmR0bmtnY3JqcWd2emRiYmdlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUxMzA1NzYsImV4cCI6MjEwMDcwNjU3Nn0.Lrq9U3TKcMykTdPUMWeDYWXorRBMnGXiUKiOdZitBNk';
+
 let cachedClient: SupabaseClient | null = null;
 let cachedUrl = '';
 let cachedKey = '';
 
 export function getSupabaseCredentials(): { url: string; key: string } {
-  const envUrl = import.meta.env.VITE_SUPABASE_URL || '';
-  const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+  const envUrl = import.meta.env.VITE_SUPABASE_URL || HARDCODED_SUPABASE_URL;
+  const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY || HARDCODED_SUPABASE_ANON_KEY;
 
   const localUrl = localStorage.getItem('hydralove_supabase_url') || '';
   const localKey = localStorage.getItem('hydralove_supabase_key') || '';
 
   return {
-    url: localUrl || envUrl,
-    key: localKey || envKey,
+    url: envUrl || localUrl,
+    key: envKey || localKey,
   };
 }
 
