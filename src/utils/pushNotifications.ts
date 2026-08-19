@@ -68,6 +68,51 @@ export async function requestPushSubscription(userId: string): Promise<boolean> 
   }
 }
 
+export async function triggerTestNotification(userName: string = 'Friend'): Promise<{ success: boolean; message: string }> {
+  if (!('Notification' in window)) {
+    return { success: false, message: 'Notifications are not supported on this browser/device.' };
+  }
+
+  let perm = Notification.permission;
+  if (perm !== 'granted') {
+    perm = await Notification.requestPermission();
+  }
+
+  if (perm !== 'granted') {
+    return { success: false, message: 'Notification permission denied in OS/Browser settings.' };
+  }
+
+  const title = 'HydraLove 💧 Test Alert!';
+  const body = `Hey ${userName}! 💕 Local notifications are working! (Scheduled test in 5s...)`;
+
+  try {
+    if ('serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.ready;
+      await reg.showNotification(title, {
+        body,
+        icon: 'icon-192.png',
+        badge: 'icon-192.png',
+        vibrate: [200, 100, 200],
+      });
+
+      // Schedule a 5-second delayed notification so user can lock/minimize screen
+      setTimeout(async () => {
+        await reg.showNotification('HydraLove ⏰ Delayed Test (5s)', {
+          body: `Drink water, ${userName}! 🌸 Your screen lock test succeeded!`,
+          icon: 'icon-192.png',
+          vibrate: [300, 100, 300],
+        });
+      }, 5000);
+    } else {
+      new Notification(title, { body, icon: 'icon-192.png' });
+    }
+
+    return { success: true, message: 'Test alert sent! Second test will fire in 5 seconds (lock your screen to test).' };
+  } catch (e: any) {
+    return { success: false, message: e?.message || 'Failed to trigger notification.' };
+  }
+}
+
 export async function sendAdminPushNotification(targetUserId: string, message: string): Promise<boolean> {
   const logEntry: NotificationLog = {
     id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -85,12 +130,12 @@ export async function sendAdminPushNotification(targetUserId: string, message: s
       const reg = await navigator.serviceWorker.ready;
       reg.showNotification('HydraLove 💧', {
         body: message,
-        icon: '/pwa-192x192.png',
-        badge: '/pwa-192x192.png',
+        icon: 'icon-192.png',
+        badge: 'icon-192.png',
         vibrate: [100, 50, 100],
       });
     } else {
-      new Notification('HydraLove 💧', { body: message, icon: '/pwa-192x192.png' });
+      new Notification('HydraLove 💧', { body: message, icon: 'icon-192.png' });
     }
   }
 
@@ -124,7 +169,7 @@ export function initLocalHydrationReminders(getUserName: () => string) {
         const title = 'Hydration Time 💧';
         const options = {
           body: `Hey ${name}! 💕 It's time for a little water break!`,
-          icon: '/pwa-192x192.png',
+          icon: 'icon-192.png',
           vibrate: [200, 100, 200],
         };
 

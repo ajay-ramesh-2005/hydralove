@@ -3,9 +3,10 @@ import { motion } from 'framer-motion';
 import type { UserProfile, HydrationEntry, NotificationLog } from '../types';
 import { KawaiiCharacter } from './KawaiiCharacter';
 import { formatMlToLiters, calculateDailyGoalMl } from '../utils/hydrationGoal';
-import { Heart, Send, Calendar, TrendingUp, Bell, Clock, Sparkles, X, User, Edit3, Save, Database, Check, AlertCircle } from 'lucide-react';
+import { Heart, Send, Calendar, TrendingUp, Bell, Clock, Sparkles, X, User, Edit3, Save, Database, Check, AlertCircle, Smartphone, Zap } from 'lucide-react';
 import { playTapSound, playCelebrationSound } from '../utils/soundEffects';
 import { getSupabaseCredentials, saveSupabaseCredentials, getSupabaseClient } from '../utils/supabaseClient';
+import { triggerTestNotification } from '../utils/pushNotifications';
 
 interface AdminDashboardProps {
   profiles: UserProfile[];
@@ -30,6 +31,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [pushMessage, setPushMessage] = useState<string>('Drink some water, sleepyhead! 💕💧');
   const [isSending, setIsSending] = useState<boolean>(false);
   const [sendStatusMessage, setSendStatusMessage] = useState<string>('');
+  const [testNotifResult, setTestNotifResult] = useState<string>('');
 
   const p1 = profiles.find(p => p.id === 'user_1') || profiles[0];
   const p2 = profiles.find(p => p.id === 'user_2') || profiles[1] || profiles[0];
@@ -114,6 +116,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setDbStatusMsg('Please enter valid Supabase URL & Anon Key');
     }
     setTimeout(() => setDbStatusMsg(''), 4000);
+  };
+
+  const handleTestOfflineNotification = async () => {
+    playTapSound();
+    setTestNotifResult('Testing notification...');
+    const result = await triggerTestNotification(u1Name);
+    if (result.success) {
+      playCelebrationSound();
+      setTestNotifResult(result.message);
+    } else {
+      setTestNotifResult(`❌ ${result.message}`);
+    }
   };
 
   const handleSendPush = async () => {
@@ -420,6 +434,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           {activeTab === 'push' && (
             <div className="space-y-4">
+              {/* Test Local Offline Notification Card */}
+              <div className="bg-gradient-to-r from-purple-50 to-pink-50 p-4 rounded-2xl border-2 border-purple-200 shadow-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-purple-900 flex items-center gap-1.5">
+                    <Zap className="w-4 h-4 text-purple-600" />
+                    <span>Test Local / Offline Notifications</span>
+                  </h4>
+                  <span className="text-[10px] bg-purple-200 text-purple-800 font-bold px-2 py-0.5 rounded-full">
+                    Screen Lock Test
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600">
+                  Tap to send an instant test notification, then lock/minimize your phone to verify that the 5-second delayed notification pops up on your lock screen!
+                </p>
+
+                <button
+                  onClick={handleTestOfflineNotification}
+                  className="w-full py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-md flex items-center justify-center gap-2"
+                >
+                  <Bell className="w-4 h-4" />
+                  <span>TEST LOCAL NOTIFICATION 🔔</span>
+                </button>
+
+                {testNotifResult && (
+                  <div className="text-center text-xs font-bold text-purple-700 bg-white p-2 rounded-xl border border-purple-100 shadow-2xs">
+                    {testNotifResult}
+                  </div>
+                )}
+              </div>
+
               <div className="bg-pink-50 p-3 rounded-2xl border border-pink-200 space-y-1">
                 <h4 className="text-xs font-bold text-pink-700 flex items-center gap-1.5">
                   <Bell className="w-3.5 h-3.5" />
