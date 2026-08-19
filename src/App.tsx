@@ -44,9 +44,15 @@ export const App: React.FC = () => {
   const [isDeviceConfigured, setIsDeviceConfigured] = useState<boolean>(true);
 
   const [todayEntriesMap, setTodayEntriesMap] = useState<Record<string, HydrationEntry[]>>({});
+  // Hourly offline reminder schedule: 9:00 AM to 12:00 AM (Midnight)
   const [reminderSettings, setReminderSettings] = useState<ReminderSettings>({
     enabled: true,
-    times: ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00'],
+    times: [
+      '09:00', '10:00', '11:00', '12:00',
+      '13:00', '14:00', '15:00', '16:00',
+      '17:00', '18:00', '19:00', '20:00',
+      '21:00', '22:00', '23:00', '00:00'
+    ],
     soundEnabled: true,
   });
 
@@ -142,12 +148,12 @@ export const App: React.FC = () => {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Fast 5-second polling interval so iPhone receives custom push notifications almost instantly!
+    // Fast 3-second polling interval so all devices receive custom push notifications live!
     const syncInterval = setInterval(() => {
       if (navigator.onLine) {
         triggerOfflineSyncAndFetch();
       }
-    }, 5000);
+    }, 3000);
 
     initLocalHydrationReminders(() => activeProfile?.name || '');
 
@@ -176,7 +182,7 @@ export const App: React.FC = () => {
       await syncProfilesWithSupabase(profiles);
     }
 
-    // 2. Fetch custom remote notifications sent from partner (100% reliable iPhone + Android sync)
+    // 2. Fetch custom remote notifications sent from other devices (iPhone + Android sync)
     const remoteNotifs = await fetchRemoteNotificationsFromSupabase(myUserId);
     for (const notif of remoteNotifs) {
       if (!shownNotifIds.has(notif.id)) {
@@ -184,7 +190,7 @@ export const App: React.FC = () => {
         await saveNotificationLog(notif);
         setNotificationLogs(prev => [notif, ...prev]);
 
-        // Pop notification on iPhone or Android!
+        // Pop notification on receiving device!
         if ('Notification' in window && Notification.permission === 'granted') {
           try {
             if ('serviceWorker' in navigator) {
@@ -388,7 +394,7 @@ export const App: React.FC = () => {
   };
 
   const handleSendCustomNotification = async (targetUserId: string, message: string) => {
-    const success = await sendAdminPushNotification(targetUserId, message);
+    const success = await sendAdminPushNotification(targetUserId, message, myUserId);
     const updatedLogs = await getNotificationLogs();
     setNotificationLogs(updatedLogs);
     return success;

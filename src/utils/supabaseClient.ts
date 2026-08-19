@@ -238,7 +238,7 @@ export async function deleteRemoteEntriesForDateFromSupabase(userId: string, loc
 /**
  * Saves custom admin/partner notifications to Supabase table for cross-device notification polling
  */
-export async function saveRemoteNotificationToSupabase(logEntry: any) {
+export async function saveRemoteNotificationToSupabase(logEntry: any, senderUserId?: string) {
   const client = getSupabaseClient();
   if (!client) return false;
 
@@ -249,8 +249,8 @@ export async function saveRemoteNotificationToSupabase(logEntry: any) {
         id: logEntry.id,
         user_id: logEntry.userId,
         message: logEntry.message,
-        type: logEntry.type,
-        sent_at: logEntry.sentAt,
+        type: logEntry.type || 'admin_custom',
+        sent_at: logEntry.sentAt || new Date().toISOString(),
         status: 'sent',
       }, { onConflict: 'id' });
 

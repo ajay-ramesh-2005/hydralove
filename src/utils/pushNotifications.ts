@@ -90,8 +90,8 @@ export async function triggerTestNotification(userName: string = 'Friend'): Prom
       const reg = await navigator.serviceWorker.ready;
       await reg.showNotification(title, {
         body,
-        icon: 'icon-192.png',
-        badge: 'icon-192.png',
+        icon: 'apple-touch-icon.png',
+        badge: 'apple-touch-icon.png',
         vibrate: [200, 100, 200],
       });
 
@@ -99,12 +99,12 @@ export async function triggerTestNotification(userName: string = 'Friend'): Prom
       setTimeout(async () => {
         await reg.showNotification('HydraLove ⏰ Delayed Test (5s)', {
           body: `Drink water, ${userName}! 🌸 Your screen lock test succeeded!`,
-          icon: 'icon-192.png',
+          icon: 'apple-touch-icon.png',
           vibrate: [300, 100, 300],
         });
       }, 5000);
     } else {
-      new Notification(title, { body, icon: 'icon-192.png' });
+      new Notification(title, { body, icon: 'apple-touch-icon.png' });
     }
 
     return { success: true, message: 'Test alert sent! Second test will fire in 5 seconds (lock your screen to test).' };
@@ -113,9 +113,9 @@ export async function triggerTestNotification(userName: string = 'Friend'): Prom
   }
 }
 
-export async function sendAdminPushNotification(targetUserId: string, message: string): Promise<boolean> {
+export async function sendAdminPushNotification(targetUserId: string, message: string, senderUserId?: string): Promise<boolean> {
   const logEntry: NotificationLog = {
-    id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     userId: targetUserId,
     message,
     type: 'admin_custom',
@@ -125,25 +125,10 @@ export async function sendAdminPushNotification(targetUserId: string, message: s
 
   await saveNotificationLog(logEntry);
 
-  // 1. Show notification on current local device
-  if ('Notification' in window && Notification.permission === 'granted') {
-    if ('serviceWorker' in navigator) {
-      const reg = await navigator.serviceWorker.ready;
-      reg.showNotification('HydraLove 💧', {
-        body: message,
-        icon: 'icon-192.png',
-        badge: 'icon-192.png',
-        vibrate: [100, 50, 100],
-      });
-    } else {
-      new Notification('HydraLove 💧', { body: message, icon: 'icon-192.png' });
-    }
-  }
+  // Upload to Supabase notification_history so ALL OTHER devices receive it!
+  await saveRemoteNotificationToSupabase(logEntry, senderUserId);
 
-  // 2. Save to Supabase notification_history for cross-device polling (iPhone + Android sync)
-  await saveRemoteNotificationToSupabase(logEntry);
-
-  // 3. Invoke Web Push edge function if available
+  // Invoke Web Push edge function if available
   if (supabase) {
     try {
       const { error } = await supabase.functions.invoke('send-push', {
@@ -174,7 +159,7 @@ export function initLocalHydrationReminders(getUserName: () => string) {
         const title = 'Hydration Time 💧';
         const options = {
           body: `Hey ${name}! 💕 It's time for a little water break!`,
-          icon: 'icon-192.png',
+          icon: 'apple-touch-icon.png',
           vibrate: [200, 100, 200],
         };
 
