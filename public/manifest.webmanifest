@@ -1,0 +1,17 @@
+{
+  "name": "HydraLove • Kawaii Hydration Companion",
+  "short_name": "HydraLove",
+  "description": "A cute mobile-first hydration reminder & kawaii garden companion app for two.",
+  "theme_color": "#FFF0F5",
+  "background_color": "#FFF0F5",
+  "display": "standalone",
+  "orientation": "portrait",
+  "start_url": "/",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
