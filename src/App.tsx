@@ -13,7 +13,12 @@ import {
   getAllUnsyncedEntries,
 } from './utils/indexedDB';
 import { getLocalDateString, calculateDailyGoalMl } from './utils/hydrationGoal';
-import { syncOfflineEntriesWithSupabase, fetchRemoteEntriesFromSupabase } from './utils/supabaseClient';
+import {
+  syncOfflineEntriesWithSupabase,
+  fetchRemoteEntriesFromSupabase,
+  syncProfilesWithSupabase,
+  fetchProfilesFromSupabase,
+} from './utils/supabaseClient';
 import {
   requestPushSubscription,
   sendAdminPushNotification,
@@ -112,6 +117,11 @@ export const App: React.FC = () => {
         map[p.id] = userEntries;
       }
       setTodayEntriesMap(map);
+
+      // Perform online sync on mount
+      if (navigator.onLine) {
+        triggerOfflineSyncAndFetch();
+      }
     }
 
     loadInitialData();
@@ -125,11 +135,12 @@ export const App: React.FC = () => {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
+    // Online periodic sync every 15s to keep all devices and profile names updated live
     const syncInterval = setInterval(() => {
       if (navigator.onLine) {
         triggerOfflineSyncAndFetch();
       }
-    }, 30000);
+    }, 15000);
 
     initLocalHydrationReminders(() => activeProfile?.name || '');
 
@@ -143,6 +154,23 @@ export const App: React.FC = () => {
   const triggerOfflineSyncAndFetch = async () => {
     if (!navigator.onLine) return;
     
+    // 1. Sync remote profile names & goals from Supabase
+    const remoteProfiles = await fetchProfilesFromSupabase();
+    if (remoteProfiles && remoteProfiles.length > 0) {
+      for (const p of remoteProfiles) {
+        await saveProfileToDB(p);
+      }
+      setProfiles(remoteProfiles);
+      if (activeProfile) {
+        const found = remoteProfiles.find(p => p.id === activeProfile.id);
+        if (found) setActiveProfile(found);
+      }
+    } else if (profiles.length > 0) {
+      // Sync local profiles to Supabase if Supabase has no data
+      await syncProfilesWithSupabase(profiles);
+    }
+
+    // 2. Upload unsynced local hydration entries
     const unsynced = await getAllUnsyncedEntries();
     if (unsynced.length > 0) {
       const success = await syncOfflineEntriesWithSupabase(unsynced);
@@ -153,6 +181,7 @@ export const App: React.FC = () => {
       }
     }
 
+    // 3. Fetch remote entries from Supabase to sync both users' water data
     const remoteEntries = await fetchRemoteEntriesFromSupabase(todayStr);
     if (remoteEntries.length > 0) {
       const map: Record<string, HydrationEntry[]> = {};
@@ -178,7 +207,9 @@ export const App: React.FC = () => {
         dailyGoalMl: newGoalMl,
       };
       await saveProfileToDB(newP);
-      setProfiles(prev => prev.map(p => (p.id === selectedUserId ? newP : p)));
+      const newProfiles = profiles.map(p => (p.id === selectedUserId ? newP : p));
+      setProfiles(newProfiles);
+      await syncProfilesWithSupabase(newProfiles);
     }
 
     await saveSetting('my_user_id', selectedUserId);
@@ -212,26 +243,24 @@ export const App: React.FC = () => {
     const p1 = profiles.find(p => p.id === 'user_1');
     const p2 = profiles.find(p => p.id === 'user_2');
 
-    if (p1) {
-      const newP1 = { ...p1, name: u1Name };
-      await saveProfileToDB(newP1);
-    }
-    if (p2) {
-      const newP2 = { ...p2, name: u2Name };
-      await saveProfileToDB(newP2);
-    }
-
     const updated = profiles.map(p => {
-      if (p.id === 'user_1') return { ...p, name: u1Name };
-      if (p.id === 'user_2') return { ...p, name: u2Name };
+      if (p.id === 'user_1') return { ...p, name: u1Name, roleLabel: u1Name };
+      if (p.id === 'user_2') return { ...p, name: u2Name, roleLabel: u2Name };
       return p;
     });
+
+    for (const p of updated) {
+      await saveProfileToDB(p);
+    }
 
     setProfiles(updated);
     if (activeProfile) {
       const found = updated.find(p => p.id === activeProfile.id);
       if (found) setActiveProfile(found);
     }
+
+    // Sync updated names to Supabase immediately so all devices update!
+    await syncProfilesWithSupabase(updated);
   };
 
   const handleAddWater = async (amountMl: number) => {
@@ -284,10 +313,13 @@ export const App: React.FC = () => {
 
   const handleSaveProfile = async (updatedProfile: UserProfile) => {
     await saveProfileToDB(updatedProfile);
-    setProfiles(prev => prev.map(p => (p.id === updatedProfile.id ? updatedProfile : p)));
+    const updatedProfiles = profiles.map(p => (p.id === updatedProfile.id ? updatedProfile : p));
+    setProfiles(updatedProfiles);
     if (activeProfile?.id === updatedProfile.id) {
       setActiveProfile(updatedProfile);
     }
+    // Sync profile edits to Supabase
+    await syncProfilesWithSupabase(updatedProfiles);
   };
 
   const handleSaveReminders = async (reminders: ReminderSettings) => {

@@ -10,7 +10,68 @@ export const supabase = isSupabaseConfigured
   : null;
 
 /**
- * Uploads unsynced entries from IndexedDB queue to Supabase
+ * Uploads/upserts user profiles (names, weight, goals) to Supabase
+ */
+export async function syncProfilesWithSupabase(profiles: any[]) {
+  if (!supabase || !profiles.length) return false;
+
+  try {
+    const { error } = await supabase
+      .from('users')
+      .upsert(
+        profiles.map(p => ({
+          id: p.id,
+          name: p.name,
+          weight_kg: p.weightKg,
+          daily_goal_ml: p.dailyGoalMl,
+          role_label: p.roleLabel || p.name,
+        })),
+        { onConflict: 'id' }
+      );
+
+    if (error) {
+      console.warn('Supabase profile sync error:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('Network issue syncing profiles:', err);
+    return false;
+  }
+}
+
+/**
+ * Fetches user profiles from Supabase to keep all devices synced
+ */
+export async function fetchProfilesFromSupabase() {
+  if (!supabase) return [];
+
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*');
+
+    if (error) {
+      console.warn('Fetch profiles error:', error.message);
+      return [];
+    }
+
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      weightKg: Number(row.weight_kg) || 60,
+      dailyGoalMl: Number(row.daily_goal_ml) || 3000,
+      createdAt: row.created_at || new Date().toISOString(),
+      roleLabel: row.role_label || row.name,
+    }));
+  } catch (err) {
+    console.warn('Network issue fetching profiles:', err);
+    return [];
+  }
+}
+
+/**
+ * Uploads unsynced hydration entries from IndexedDB queue to Supabase
  */
 export async function syncOfflineEntriesWithSupabase(unsyncedEntries: any[]) {
   if (!supabase || !unsyncedEntries.length) return false;
@@ -31,12 +92,12 @@ export async function syncOfflineEntriesWithSupabase(unsyncedEntries: any[]) {
       );
 
     if (error) {
-      console.warn('Supabase sync error:', error.message);
+      console.warn('Supabase entry sync error:', error.message);
       return false;
     }
     return true;
   } catch (err) {
-    console.warn('Network issue during Supabase sync:', err);
+    console.warn('Network issue during Supabase entry sync:', err);
     return false;
   }
 }
