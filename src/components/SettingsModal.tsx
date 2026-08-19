@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import type { UserProfile, ReminderSettings } from '../types';
 import { calculateDailyGoalMl, formatMlToLiters } from '../utils/hydrationGoal';
-import { Settings, Bell, Volume2, VolumeX, Download, Trash2, X, RefreshCcw, User, Smartphone } from 'lucide-react';
-import { playTapSound } from '../utils/soundEffects';
+import { Settings, Bell, Volume2, VolumeX, Download, Trash2, X, RefreshCcw, User, Smartphone, Zap } from 'lucide-react';
+import { playTapSound, playCelebrationSound } from '../utils/soundEffects';
+import { triggerTestNotification } from '../utils/pushNotifications';
 
 interface SettingsModalProps {
   activeProfile: UserProfile;
@@ -45,6 +46,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [selectedMyUserId, setSelectedMyUserId] = useState(myUserId);
   const [remindersEnabled, setRemindersEnabled] = useState(reminderSettings.enabled);
   const [isSubscribingPush, setIsSubscribingPush] = useState(false);
+  const [testNotifResult, setTestNotifResult] = useState('');
 
   const goalMl = calculateDailyGoalMl(parseFloat(weightKg) || 60);
 
@@ -76,6 +78,35 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setIsSubscribingPush(true);
     await onRequestPushPermission();
     setIsSubscribingPush(false);
+  };
+
+  const handleTestOfflineNotification = async () => {
+    playTapSound();
+    setTestNotifResult('Testing notification...');
+    const result = await triggerTestNotification(activeProfile.name);
+    if (result.success) {
+      playCelebrationSound();
+      setTestNotifResult(result.message);
+    } else {
+      setTestNotifResult(`❌ ${result.message}`);
+    }
+  };
+
+  const handleForceUpdateApp = async () => {
+    playTapSound();
+    if ('serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      for (const registration of registrations) {
+        await registration.unregister();
+      }
+    }
+    if ('caches' in window) {
+      const cacheKeys = await caches.keys();
+      for (const key of cacheKeys) {
+        await caches.delete(key);
+      }
+    }
+    window.location.reload();
   };
 
   return (
@@ -212,6 +243,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 {pushSubscribed ? 'Subscribed ✓' : 'Enable Push'}
               </button>
             </div>
+
+            {/* Test Notification Button */}
+            <div className="pt-2 border-t border-sky-100 space-y-1.5">
+              <button
+                onClick={handleTestOfflineNotification}
+                className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-xs flex items-center justify-center gap-1.5"
+              >
+                <Zap className="w-4 h-4" />
+                <span>TEST LOCAL NOTIFICATION 🔔</span>
+              </button>
+
+              {testNotifResult && (
+                <p className="text-center text-[11px] font-bold text-purple-700 bg-white p-2 rounded-xl border border-purple-100">
+                  {testNotifResult}
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="bg-amber-50/60 p-3.5 rounded-2xl border border-amber-100 space-y-3">
@@ -254,6 +302,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
 
           <div className="space-y-2 pt-2 border-t border-slate-100">
+            <button
+              onClick={handleForceUpdateApp}
+              className="w-full py-2 rounded-xl bg-sky-100 hover:bg-sky-200 text-sky-700 font-bold text-xs flex items-center justify-center gap-1.5"
+            >
+              <RefreshCcw className="w-3.5 h-3.5" />
+              <span>Update App & Clear Cache 🔄</span>
+            </button>
+
             <button
               onClick={() => {
                 if (confirm("Reset today's water entries?")) {
