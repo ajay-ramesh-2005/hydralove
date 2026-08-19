@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import type { UserProfile, ReminderSettings } from '../types';
 import { calculateDailyGoalMl, formatMlToLiters } from '../utils/hydrationGoal';
-import { Settings, Bell, Volume2, VolumeX, Download, Trash2, X, RefreshCcw, User, Heart, Smartphone } from 'lucide-react';
-import { playTapSound } from '../utils/soundEffects';
+import { Settings, Bell, Volume2, VolumeX, Download, Trash2, X, RefreshCcw, User, Heart, Smartphone, Database, Check, AlertCircle } from 'lucide-react';
+import { playTapSound, playCelebrationSound } from '../utils/soundEffects';
+import { getSupabaseCredentials, saveSupabaseCredentials, getSupabaseClient } from '../utils/supabaseClient';
 
 interface SettingsModalProps {
   activeProfile: UserProfile;
@@ -46,6 +47,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [remindersEnabled, setRemindersEnabled] = useState(reminderSettings.enabled);
   const [isSubscribingPush, setIsSubscribingPush] = useState(false);
 
+  // Cloud Supabase Credentials State
+  const initialCreds = getSupabaseCredentials();
+  const [supaUrl, setSupaUrl] = useState(initialCreds.url);
+  const [supaKey, setSupaKey] = useState(initialCreds.key);
+  const [dbStatusMsg, setDbStatusMsg] = useState('');
+
   const goalMl = calculateDailyGoalMl(parseFloat(weightKg) || 60);
 
   const handleSaveProfile = () => {
@@ -59,6 +66,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     if (selectedMyUserId !== myUserId) {
       onSaveMyUserId(selectedMyUserId);
     }
+  };
+
+  const handleSaveDatabaseConfig = () => {
+    playTapSound();
+    saveSupabaseCredentials(supaUrl, supaKey);
+    const client = getSupabaseClient();
+    if (client) {
+      playCelebrationSound();
+      setDbStatusMsg('Connected to Supabase! Live sync active ✨');
+    } else {
+      setDbStatusMsg('Please enter valid Supabase URL & Anon Key');
+    }
+    setTimeout(() => setDbStatusMsg(''), 4000);
   };
 
   const handleToggleReminders = () => {
@@ -77,6 +97,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     await onRequestPushPermission();
     setIsSubscribingPush(false);
   };
+
+  const isConnected = Boolean(getSupabaseClient());
 
   return (
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-3 select-none overflow-y-auto">
@@ -126,6 +148,59 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </button>
                 );
               })}
+            </div>
+          </div>
+
+          {/* Cloud Database Sync Settings (Supabase) */}
+          <div className="bg-sky-50/70 p-3.5 rounded-2xl border border-sky-200 space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <Database className="w-4 h-4 text-sky-500" />
+                <span>Live Phone & Laptop Sync</span>
+              </h4>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                isConnected ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'
+              }`}>
+                {isConnected ? <Check className="w-3 h-3 text-emerald-600" /> : <AlertCircle className="w-3 h-3 text-amber-600" />}
+                <span>{isConnected ? 'Connected' : 'Sync Offline'}</span>
+              </span>
+            </div>
+
+            <div className="space-y-2">
+              <div>
+                <label className="text-[10px] font-semibold text-slate-500">Supabase Project URL</label>
+                <input
+                  type="text"
+                  value={supaUrl}
+                  onChange={(e) => setSupaUrl(e.target.value)}
+                  placeholder="https://your-project.supabase.co"
+                  className="w-full px-3 py-1.5 rounded-xl border border-sky-200 text-xs font-mono text-slate-800 bg-white focus:outline-none focus:border-sky-400"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-semibold text-slate-500">Supabase Anon Key</label>
+                <input
+                  type="password"
+                  value={supaKey}
+                  onChange={(e) => setSupaKey(e.target.value)}
+                  placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..."
+                  className="w-full px-3 py-1.5 rounded-xl border border-sky-200 text-xs font-mono text-slate-800 bg-white focus:outline-none focus:border-sky-400"
+                />
+              </div>
+
+              <button
+                onClick={handleSaveDatabaseConfig}
+                className="w-full py-2 rounded-xl bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs shadow-xs"
+              >
+                Connect & Enable Live Sync ✨
+              </button>
+
+              {dbStatusMsg && (
+                <p className="text-center text-[11px] font-bold text-pink-600 pt-1">
+                  {dbStatusMsg}
+                </p>
+              )}
             </div>
           </div>
 

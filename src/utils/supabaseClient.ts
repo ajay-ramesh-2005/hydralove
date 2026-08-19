@@ -1,22 +1,71 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+let cachedClient: SupabaseClient | null = null;
+let cachedUrl = '';
+let cachedKey = '';
 
-export const isSupabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+export function getSupabaseCredentials(): { url: string; key: string } {
+  const envUrl = import.meta.env.VITE_SUPABASE_URL || '';
+  const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-export const supabase = isSupabaseConfigured
-  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
-  : null;
+  const localUrl = localStorage.getItem('hydralove_supabase_url') || '';
+  const localKey = localStorage.getItem('hydralove_supabase_key') || '';
+
+  return {
+    url: localUrl || envUrl,
+    key: localKey || envKey,
+  };
+}
+
+export function getSupabaseClient(): SupabaseClient | null {
+  const { url, key } = getSupabaseCredentials();
+
+  if (!url || !key) {
+    return null;
+  }
+
+  if (cachedClient && cachedUrl === url && cachedKey === key) {
+    return cachedClient;
+  }
+
+  try {
+    cachedUrl = url;
+    cachedKey = key;
+    cachedClient = createClient(url, key);
+    return cachedClient;
+  } catch (e) {
+    console.warn('Failed to initialize Supabase client:', e);
+    return null;
+  }
+}
+
+export function saveSupabaseCredentials(url: string, key: string) {
+  if (url.trim()) {
+    localStorage.setItem('hydralove_supabase_url', url.trim());
+  } else {
+    localStorage.removeItem('hydralove_supabase_url');
+  }
+
+  if (key.trim()) {
+    localStorage.setItem('hydralove_supabase_key', key.trim());
+  } else {
+    localStorage.removeItem('hydralove_supabase_key');
+  }
+
+  cachedClient = null;
+  cachedUrl = '';
+  cachedKey = '';
+}
 
 /**
  * Uploads/upserts user profiles (names, weight, goals) to Supabase
  */
 export async function syncProfilesWithSupabase(profiles: any[]) {
-  if (!supabase || !profiles.length) return false;
+  const client = getSupabaseClient();
+  if (!client || !profiles.length) return false;
 
   try {
-    const { error } = await supabase
+    const { error } = await client
       .from('users')
       .upsert(
         profiles.map(p => ({
@@ -44,10 +93,11 @@ export async function syncProfilesWithSupabase(profiles: any[]) {
  * Fetches user profiles from Supabase to keep all devices synced
  */
 export async function fetchProfilesFromSupabase() {
-  if (!supabase) return [];
+  const client = getSupabaseClient();
+  if (!client) return [];
 
   try {
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from('users')
       .select('*');
 
@@ -74,10 +124,11 @@ export async function fetchProfilesFromSupabase() {
  * Uploads unsynced hydration entries from IndexedDB queue to Supabase
  */
 export async function syncOfflineEntriesWithSupabase(unsyncedEntries: any[]) {
-  if (!supabase || !unsyncedEntries.length) return false;
+  const client = getSupabaseClient();
+  if (!client || !unsyncedEntries.length) return false;
 
   try {
-    const { error } = await supabase
+    const { error } = await client
       .from('hydration_entries')
       .upsert(
         unsyncedEntries.map(e => ({
@@ -106,10 +157,11 @@ export async function syncOfflineEntriesWithSupabase(unsyncedEntries: any[]) {
  * Fetches remote hydration entries for a given date from Supabase
  */
 export async function fetchRemoteEntriesFromSupabase(localDate: string) {
-  if (!supabase) return [];
+  const client = getSupabaseClient();
+  if (!client) return [];
 
   try {
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from('hydration_entries')
       .select('*')
       .eq('local_date', localDate);
