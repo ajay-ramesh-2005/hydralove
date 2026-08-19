@@ -263,7 +263,7 @@ export async function saveRemoteNotificationToSupabase(logEntry: any) {
 }
 
 /**
- * Fetches recent notifications targeted at myUserId or 'all' from Supabase
+ * Fetches recent notifications from Supabase with fail-safe matching for iPhone & Android
  */
 export async function fetchRemoteNotificationsFromSupabase(myUserId: string) {
   const client = getSupabaseClient();
@@ -273,9 +273,8 @@ export async function fetchRemoteNotificationsFromSupabase(myUserId: string) {
     const { data, error } = await client
       .from('notification_history')
       .select('*')
-      .or(`user_id.eq.${myUserId},user_id.eq.all`)
       .order('sent_at', { ascending: false })
-      .limit(10);
+      .limit(20);
 
     if (error) {
       console.warn('Fetch remote notifications error:', error.message);

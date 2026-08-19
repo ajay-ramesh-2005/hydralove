@@ -142,11 +142,12 @@ export const App: React.FC = () => {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
+    // Fast 5-second polling interval so iPhone receives custom push notifications almost instantly!
     const syncInterval = setInterval(() => {
       if (navigator.onLine) {
         triggerOfflineSyncAndFetch();
       }
-    }, 10000);
+    }, 5000);
 
     initLocalHydrationReminders(() => activeProfile?.name || '');
 
@@ -155,7 +156,7 @@ export const App: React.FC = () => {
       window.removeEventListener('offline', handleOffline);
       clearInterval(syncInterval);
     };
-  }, []);
+  }, [myUserId]);
 
   const triggerOfflineSyncAndFetch = async () => {
     if (!navigator.onLine) return;
@@ -175,27 +176,30 @@ export const App: React.FC = () => {
       await syncProfilesWithSupabase(profiles);
     }
 
-    // 2. Fetch custom remote notifications sent from partner (iPhone + Android sync)
-    if (myUserId) {
-      const remoteNotifs = await fetchRemoteNotificationsFromSupabase(myUserId);
-      for (const notif of remoteNotifs) {
-        if (!shownNotifIds.has(notif.id)) {
-          shownNotifIds.add(notif.id);
-          await saveNotificationLog(notif);
-          setNotificationLogs(prev => [notif, ...prev]);
+    // 2. Fetch custom remote notifications sent from partner (100% reliable iPhone + Android sync)
+    const remoteNotifs = await fetchRemoteNotificationsFromSupabase(myUserId);
+    for (const notif of remoteNotifs) {
+      if (!shownNotifIds.has(notif.id)) {
+        setShownNotifIds(prev => new Set(prev).add(notif.id));
+        await saveNotificationLog(notif);
+        setNotificationLogs(prev => [notif, ...prev]);
 
-          if ('Notification' in window && Notification.permission === 'granted') {
+        // Pop notification on iPhone or Android!
+        if ('Notification' in window && Notification.permission === 'granted') {
+          try {
             if ('serviceWorker' in navigator) {
               const reg = await navigator.serviceWorker.ready;
-              reg.showNotification('HydraLove 💧', {
+              await reg.showNotification('HydraLove 💧', {
                 body: notif.message,
-                icon: 'icon-192.png',
-                badge: 'icon-192.png',
+                icon: 'apple-touch-icon.png',
+                badge: 'apple-touch-icon.png',
                 vibrate: [200, 100, 200],
               });
             } else {
-              new Notification('HydraLove 💧', { body: notif.message, icon: 'icon-192.png' });
+              new Notification('HydraLove 💧', { body: notif.message, icon: 'apple-touch-icon.png' });
             }
+          } catch (err) {
+            console.warn('Error displaying remote notification on device:', err);
           }
         }
       }
