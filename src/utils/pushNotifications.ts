@@ -30,6 +30,9 @@ function urlBase64ToUint8Array(base64String: string) {
 export function getAbsoluteAppUrl(filename: string): string {
   if (typeof window === 'undefined') return filename;
   const origin = window.location.origin;
+  if (origin.includes('github.io')) {
+    return `${origin}/hydralove/${filename}`;
+  }
   const base = import.meta.env.BASE_URL || '/hydralove/';
   const cleanBase = base.endsWith('/') ? base : `${base}/`;
   return `${origin}${cleanBase}${filename}`;
