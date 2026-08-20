@@ -150,7 +150,7 @@ export async function sendAdminPushNotification(targetUserId: string, message: s
 export function initLocalHydrationReminders(getUserName: () => string) {
   if (typeof window === 'undefined') return;
 
-  // Initialize test mode to true by default for testing
+  // Default minute test mode to true for testing
   if (localStorage.getItem('hydralove_test_mode_minute') === null) {
     localStorage.setItem('hydralove_test_mode_minute', 'true');
   }
@@ -163,71 +163,63 @@ export function initLocalHydrationReminders(getUserName: () => string) {
 
     const now = new Date();
     const todayDateStr = now.toISOString().split('T')[0];
-    const minutesStr = String(now.getMinutes()).padStart(2, '0');
     const hoursStr = String(now.getHours()).padStart(2, '0');
+    const minutesStr = String(now.getMinutes()).padStart(2, '0');
+    const currentTimeStr = `${hoursStr}:${minutesStr}`;
 
-    let timeKey = '';
-    let shouldFire = false;
-    let notifBody = '';
+    let slotKey = '';
+    let isScheduledSlot = false;
 
     if (isEveryMinuteTestMode) {
-      // 1-Minute Test Mode: Fire once every minute
-      timeKey = `${todayDateStr}_${hoursStr}:${minutesStr}`;
-      const lastNotifiedMinute = localStorage.getItem('hydralove_last_notified_minute');
-      if (lastNotifiedMinute !== timeKey) {
-        shouldFire = true;
-        notifBody = `Hey ${getUserName() || 'Friend'}! 💕 1-minute reminder test (${hoursStr}:${minutesStr}). Drink water! 💧`;
-      }
+      // 1-Minute Mode: Every minute is a scheduled slot (09:00, 09:01, 09:02...)
+      slotKey = `${todayDateStr}_${currentTimeStr}`;
+      isScheduledSlot = true;
     } else {
-      // Hourly Mode: Fire once per scheduled hour
-      const currentHourStr = `${hoursStr}:00`;
-      timeKey = `${todayDateStr}_${hoursStr}`;
-      const lastNotifiedHour = localStorage.getItem('hydralove_last_notified_hour');
-
-      if (reminderSettings?.times?.includes(currentHourStr) && lastNotifiedHour !== timeKey) {
-        shouldFire = true;
-        notifBody = `Hey ${getUserName() || 'Friend'}! 💕 It's time for a little water break! 💧`;
-      }
+      // Hourly Mode: Hours with :00 are scheduled slots (09:00, 10:00, 11:00...)
+      const currentHourSlot = `${hoursStr}:00`;
+      slotKey = `${todayDateStr}_${hoursStr}`;
+      isScheduledSlot = reminderSettings?.times?.includes(currentHourSlot) ?? false;
     }
 
-    if (shouldFire && 'Notification' in window && Notification.permission === 'granted') {
-      if (isEveryMinuteTestMode) {
-        localStorage.setItem('hydralove_last_notified_minute', timeKey);
-      } else {
-        localStorage.setItem('hydralove_last_notified_hour', timeKey);
-      }
+    const lastNotifiedSlot = localStorage.getItem('hydralove_last_notified_slot');
 
-      const title = isEveryMinuteTestMode ? 'Hydration 1-Min Test ⏰💧' : 'Hydration Time 💧';
-      const options: any = {
-        body: notifBody,
-        icon: 'apple-touch-icon.png',
-        badge: 'apple-touch-icon.png',
-        vibrate: [200, 100, 200],
-      };
+    if (isScheduledSlot && lastNotifiedSlot !== slotKey) {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        localStorage.setItem('hydralove_last_notified_slot', slotKey);
 
-      try {
-        if ('serviceWorker' in navigator) {
-          const reg = await navigator.serviceWorker.ready;
-          await reg.showNotification(title, options);
-        } else {
-          new Notification(title, options);
+        const name = getUserName() || 'Friend';
+        const title = 'Hydration Time 💧';
+        const options: any = {
+          body: `Hey ${name}! 💕 It's time for a little water break!`,
+          icon: 'apple-touch-icon.png',
+          badge: 'apple-touch-icon.png',
+          vibrate: [200, 100, 200],
+        };
+
+        try {
+          if ('serviceWorker' in navigator) {
+            const reg = await navigator.serviceWorker.ready;
+            await reg.showNotification(title, options);
+          } else {
+            new Notification(title, options);
+          }
+        } catch (e) {
+          console.warn('Error showing reminder notification:', e);
         }
-      } catch (e) {
-        console.warn('Error showing reminder notification:', e);
       }
     }
   };
 
-  // Run check every 5 seconds so minute transitions are picked up instantly
+  // Run check every 5 seconds
   setInterval(checkAndTriggerReminder, 5000);
 
-  // Run when user unlocks screen or app becomes visible
+  // Run when app becomes visible / user turns on screen
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
       checkAndTriggerReminder();
     }
   });
 
-  // Run immediately on page load
+  // Run immediately on load
   checkAndTriggerReminder();
 }
