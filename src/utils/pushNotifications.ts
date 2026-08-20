@@ -69,50 +69,76 @@ export async function requestPushSubscription(userId: string): Promise<boolean> 
   }
 }
 
-async function safeShowNotification(title: string, options: any): Promise<boolean> {
-  if (!('Notification' in window)) return false;
+async function safeShowNotification(title: string, options: any): Promise<{ success: boolean; error?: string }> {
+  if (!('Notification' in window)) {
+    return { success: false, error: 'Notification API is not supported in this browser.' };
+  }
 
   let perm = Notification.permission;
   if (perm !== 'granted') {
-    perm = await Notification.requestPermission();
+    try {
+      perm = await Notification.requestPermission();
+    } catch (e: any) {
+      return { success: false, error: `Permission request failed: ${e?.message || e}` };
+    }
   }
-  if (perm !== 'granted') return false;
 
-  let shownViaSW = false;
+  if (perm !== 'granted') {
+    return { success: false, error: `Notification permission is "${perm}". Please allow notifications in phone settings.` };
+  }
 
+  // Construct absolute icon URL so ServiceWorker showNotification never fails due to invalid relative paths
+  let iconUrl = 'apple-touch-icon.png';
+  try {
+    iconUrl = new URL('apple-touch-icon.png', window.location.href).href;
+  } catch {}
+
+  const safeOptions: any = {
+    ...options,
+    icon: iconUrl,
+    badge: iconUrl,
+  };
+
+  // 1. Try Service Worker showNotification first (Works on Mobile Chrome & iOS PWA)
   if ('serviceWorker' in navigator) {
     try {
-      // Race serviceWorker.ready with a 1.5s timeout so it NEVER hangs
       const reg: any = await Promise.race([
         navigator.serviceWorker.ready,
-        new Promise((_, reject) => setTimeout(() => reject(new Error('SW Timeout')), 1500)),
+        new Promise<any>((_, reject) => setTimeout(() => reject(new Error('SW Ready Timeout')), 1500)),
       ]);
 
       if (reg && typeof reg.showNotification === 'function') {
-        await reg.showNotification(title, options);
-        shownViaSW = true;
+        await reg.showNotification(title, safeOptions);
+        return { success: true };
       }
-    } catch (e) {
-      console.warn('Service worker not ready or timed out, falling back to direct Notification:', e);
+    } catch (swErr: any) {
+      console.warn('SW ready showNotification failed, trying fallback registrations:', swErr?.message);
     }
-  }
 
-  if (!shownViaSW) {
     try {
-      new Notification(title, options);
-      return true;
-    } catch (err) {
-      console.warn('Direct notification error:', err);
-      return false;
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      if (registrations.length > 0 && typeof registrations[0].showNotification === 'function') {
+        await registrations[0].showNotification(title, safeOptions);
+        return { success: true };
+      }
+    } catch (regErr: any) {
+      console.warn('Fallback registrations showNotification failed:', regErr?.message);
     }
   }
 
-  return true;
+  // 2. Direct Notification constructor fallback
+  try {
+    new Notification(title, safeOptions);
+    return { success: true };
+  } catch (directErr: any) {
+    console.warn('Direct Notification constructor failed:', directErr?.message);
+    return { success: false, error: directErr?.message || 'Could not display notification.' };
+  }
 }
 
 export async function triggerTestNotification(userName: string = 'Friend'): Promise<{ success: boolean; message: string }> {
   if (!('Notification' in window)) {
-    return { success: false, message: 'Notifications are not supported on this browser/device.' };
+    return { success: false, message: 'Notifications are not supported in this browser. Install PWA or open in Chrome/Safari.' };
   }
 
   let perm = Notification.permission;
@@ -121,39 +147,39 @@ export async function triggerTestNotification(userName: string = 'Friend'): Prom
   }
 
   if (perm !== 'granted') {
-    return { success: false, message: 'Notification permission denied in OS/Browser settings.' };
+    return {
+      success: false,
+      message: `Permission status: "${perm}". Please tap the lock 🔒 icon by the URL or check Phone Settings -> Notifications.`,
+    };
   }
 
   const title = 'HydraLove 💧 Test Alert!';
-  const body = `Hey ${userName}! 💕 Local notifications are working! (Scheduled test in 5s...)`;
+  const body = `Hey ${userName}! 💕 Local notifications are working! (Second test in 5s...)`;
 
   try {
     const options: any = {
       body,
-      icon: 'apple-touch-icon.png',
-      badge: 'apple-touch-icon.png',
       vibrate: [200, 100, 200],
     };
 
-    const success = await safeShowNotification(title, options);
+    const result = await safeShowNotification(title, options);
 
-    // Schedule 5s delayed notification to test screen lock
-    setTimeout(async () => {
-      const delayedOptions: any = {
-        body: `Drink water, ${userName}! 🌸 Your screen lock test succeeded!`,
-        icon: 'apple-touch-icon.png',
-        vibrate: [300, 100, 300],
-      };
-      await safeShowNotification('HydraLove ⏰ Delayed Test (5s)', delayedOptions);
-    }, 5000);
+    if (result.success) {
+      // Schedule 5s delayed notification to test screen lock
+      setTimeout(async () => {
+        const delayedOptions: any = {
+          body: `Drink water, ${userName}! 🌸 Screen lock test succeeded!`,
+          vibrate: [300, 100, 300],
+        };
+        await safeShowNotification('HydraLove ⏰ Delayed Test (5s)', delayedOptions);
+      }, 5000);
 
-    if (success) {
-      return { success: true, message: 'Test alert sent! Second test will fire in 5 seconds (lock your screen to test).' };
+      return { success: true, message: 'Test alert sent! Lock screen test will fire in 5 seconds (lock phone to test).' };
     } else {
-      return { success: false, message: 'Failed to display notification. Check OS permissions.' };
+      return { success: false, message: `❌ Notification error: ${result.error || 'Permission blocked'}` };
     }
   } catch (e: any) {
-    return { success: false, message: e?.message || 'Failed to trigger notification.' };
+    return { success: false, message: `❌ ${e?.message || 'Failed to trigger notification.'}` };
   }
 }
 
@@ -228,13 +254,11 @@ export function initLocalHydrationReminders(getUserName: () => string) {
       const title = 'Hydration Time 💧';
       const options: any = {
         body: `Hey ${name}! 💕 It's time for a little water break!`,
-        icon: 'apple-touch-icon.png',
-        badge: 'apple-touch-icon.png',
         vibrate: [200, 100, 200],
       };
 
-      const success = await safeShowNotification(title, options);
-      if (success) {
+      const result = await safeShowNotification(title, options);
+      if (result.success) {
         localStorage.setItem('hydralove_last_notified_slot', slotKey);
       }
     }
