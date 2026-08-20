@@ -18,19 +18,9 @@ function urlBase64ToUint8Array(base64String: string) {
 export function getAbsoluteAppUrl(filename: string): string {
   if (typeof window === 'undefined') return filename;
   const origin = window.location.origin;
-  const path = window.location.pathname;
-
-  let dirPath = path.substring(0, path.lastIndexOf('/') + 1);
-  if (!dirPath || dirPath === '/') {
-    const parts = path.split('/').filter(Boolean);
-    if (parts.length > 0 && parts[0] !== 'index.html') {
-      dirPath = `/${parts[0]}/`;
-    } else {
-      dirPath = '/';
-    }
-  }
-
-  return `${origin}${dirPath}${filename}`;
+  const base = import.meta.env.BASE_URL || '/hydralove/';
+  const cleanBase = base.endsWith('/') ? base : `${base}/`;
+  return `${origin}${cleanBase}${filename}`;
 }
 
 export async function requestPushSubscription(userId: string): Promise<boolean> {
@@ -49,7 +39,7 @@ export async function requestPushSubscription(userId: string): Promise<boolean> 
     const swUrl = getAbsoluteAppUrl('sw.js');
     let registration = await navigator.serviceWorker.getRegistration();
     if (!registration) {
-      registration = await navigator.serviceWorker.register(swUrl);
+      registration = await navigator.serviceWorker.register(swUrl, { scope: getAbsoluteAppUrl('') });
     }
 
     await navigator.serviceWorker.ready;
@@ -123,47 +113,41 @@ async function safeShowNotification(title: string, options: any): Promise<{ succ
 
   const isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent);
 
-  // Mobile browsers (Chrome Android & iOS Safari PWA) REQUIRE ServiceWorkerRegistration.showNotification()
+  // Mobile browsers REQUIRE ServiceWorkerRegistration.showNotification()
   if ('serviceWorker' in navigator) {
     try {
-      let reg: any = null;
+      let reg: ServiceWorkerRegistration | undefined;
 
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      if (registrations.length > 0) {
-        reg = registrations[0];
+      const readyReg = await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 1500)),
+      ]);
+
+      if (readyReg) {
+        reg = readyReg;
+      } else {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        if (registrations.length > 0) {
+          reg = registrations[0];
+        } else {
+          reg = await navigator.serviceWorker.register(swUrl, { scope: getAbsoluteAppUrl('') });
+        }
       }
 
-      if (!reg) {
-        reg = await navigator.serviceWorker.register(swUrl);
-      }
-
-      if (reg) {
-        if (reg.active && typeof reg.showNotification === 'function') {
-          await reg.showNotification(title, safeOptions);
-          return { success: true };
-        }
-
-        const readyReg: any = await Promise.race([
-          navigator.serviceWorker.ready,
-          new Promise<any>((resolve) => setTimeout(() => resolve(reg), 2500)),
-        ]);
-
-        const targetReg = readyReg || reg;
-        if (targetReg && typeof targetReg.showNotification === 'function') {
-          await targetReg.showNotification(title, safeOptions);
-          return { success: true };
-        }
+      if (reg && typeof reg.showNotification === 'function') {
+        await reg.showNotification(title, safeOptions);
+        return { success: true };
       }
     } catch (swErr: any) {
       console.warn('Service worker showNotification error:', swErr);
       if (isMobile) {
-        return { success: false, error: `ServiceWorker 404/Register error: ${swErr?.message || swErr}` };
+        return { success: false, error: `SW Error: ${swErr?.message || swErr}` };
       }
     }
   }
 
   if (isMobile) {
-    return { success: false, error: 'Mobile browser requires an active Service Worker. Please tap "Update App & Clear Cache".' };
+    return { success: false, error: 'Mobile browser requires Service Worker notifications.' };
   }
 
   // Desktop fallback
