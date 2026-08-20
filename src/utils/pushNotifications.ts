@@ -38,6 +38,18 @@ export function getAbsoluteAppUrl(filename: string): string {
   return `${origin}${cleanBase}${filename}`;
 }
 
+export function syncSWConfig(userName: string) {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+  const isEveryMinuteTestMode = localStorage.getItem('hydralove_test_mode_minute') !== 'false';
+  if (navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({
+      type: 'SYNC_SW_CONFIG',
+      userName,
+      isMinuteMode: isEveryMinuteTestMode,
+    });
+  }
+}
+
 export async function requestPushSubscription(userId: string): Promise<boolean> {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
     console.warn('Web Push is not supported in this browser.');
@@ -311,6 +323,9 @@ export function initLocalHydrationReminders(getUserName: () => string) {
   if (typeof window === 'undefined') return;
 
   const checkAndTriggerReminder = async () => {
+    const name = getUserName() || 'Friend';
+    syncSWConfig(name);
+
     const reminderSettings = await getSetting<ReminderSettings>('reminder_settings');
     const enabled = reminderSettings ? reminderSettings.enabled : true;
     if (!enabled) return;
@@ -344,7 +359,6 @@ export function initLocalHydrationReminders(getUserName: () => string) {
     const lastNotifiedSlot = localStorage.getItem('hydralove_last_notified_slot');
 
     if (isScheduledSlot && lastNotifiedSlot !== slotKey) {
-      const name = getUserName() || 'Friend';
       const title = 'Hydration Time 💧';
       const options: any = {
         body: `Hey ${name}! 💕 It's time for a little water break!`,
