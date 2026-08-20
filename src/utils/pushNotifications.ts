@@ -93,10 +93,11 @@ async function safeShowNotification(title: string, options: any): Promise<{ succ
     return { success: false, error: `Notification permission is "${perm}". Please allow notifications in phone settings.` };
   }
 
-  // Construct absolute icon URL so ServiceWorker showNotification never fails due to relative path parsing
   let iconUrl = 'apple-touch-icon.png';
+  let swUrl = './sw.js';
   try {
     iconUrl = new URL('apple-touch-icon.png', window.location.href).href;
+    swUrl = new URL('sw.js', window.location.href).href;
   } catch {}
 
   const safeOptions: any = {
@@ -105,47 +106,58 @@ async function safeShowNotification(title: string, options: any): Promise<{ succ
     badge: iconUrl,
   };
 
-  // On Android Chrome & mobile browsers, new Notification() is forbidden (throws Illegal constructor).
-  // We MUST use ServiceWorkerRegistration.showNotification().
+  const isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent);
+
+  // Mobile browsers (Chrome Android & iOS Safari PWA) REQUIRE ServiceWorkerRegistration.showNotification()
   if ('serviceWorker' in navigator) {
     try {
       let reg: any = null;
 
-      // 1. Check existing service worker registrations
       const registrations = await navigator.serviceWorker.getRegistrations();
       if (registrations.length > 0) {
         reg = registrations[0];
       }
 
-      // 2. If no registration found, register sw.js dynamically
       if (!reg) {
-        reg = await navigator.serviceWorker.register('./sw.js');
+        reg = await navigator.serviceWorker.register(swUrl);
       }
 
-      // 3. Wait for service worker ready (up to 3s)
-      const readyReg: any = await Promise.race([
-        navigator.serviceWorker.ready,
-        new Promise<any>((resolve) => setTimeout(() => resolve(reg), 3000)),
-      ]);
+      if (reg) {
+        if (reg.active && typeof reg.showNotification === 'function') {
+          await reg.showNotification(title, safeOptions);
+          return { success: true };
+        }
 
-      const targetReg = readyReg || reg;
+        const readyReg: any = await Promise.race([
+          navigator.serviceWorker.ready,
+          new Promise<any>((resolve) => setTimeout(() => resolve(reg), 2500)),
+        ]);
 
-      if (targetReg && typeof targetReg.showNotification === 'function') {
-        await targetReg.showNotification(title, safeOptions);
-        return { success: true };
+        const targetReg = readyReg || reg;
+        if (targetReg && typeof targetReg.showNotification === 'function') {
+          await targetReg.showNotification(title, safeOptions);
+          return { success: true };
+        }
       }
     } catch (swErr: any) {
       console.warn('Service worker showNotification error:', swErr);
+      if (isMobile) {
+        return { success: false, error: `ServiceWorker error: ${swErr?.message || swErr}` };
+      }
     }
   }
 
-  // Fallback to direct Notification constructor for Desktop browsers where supported
+  if (isMobile) {
+    return { success: false, error: 'Mobile browser requires an active Service Worker. Please tap "Update App & Clear Cache".' };
+  }
+
+  // Desktop fallback
   try {
     new Notification(title, safeOptions);
     return { success: true };
   } catch (directErr: any) {
     console.warn('Direct Notification constructor failed:', directErr);
-    return { success: false, error: directErr?.message || 'Could not display notification via Service Worker.' };
+    return { success: false, error: directErr?.message || 'Could not display notification.' };
   }
 }
 
@@ -189,7 +201,7 @@ export async function triggerTestNotification(userName: string = 'Friend'): Prom
 
       return { success: true, message: 'Test alert sent! Lock screen test will fire in 5 seconds (lock phone to test).' };
     } else {
-      return { success: false, message: `❌ Notification error: ${result.error || 'Permission blocked'}` };
+      return { success: false, message: `❌ ${result.error || 'Notification failed.'}` };
     }
   } catch (e: any) {
     return { success: false, message: `❌ ${e?.message || 'Failed to trigger notification.'}` };
