@@ -1,6 +1,6 @@
 import { getSetting, saveSetting, saveNotificationLog } from './indexedDB';
-import { supabase, isSupabaseConfigured, saveRemoteNotificationToSupabase } from './supabaseClient';
-import type { PushSubscriptionData, NotificationLog } from '../types';
+import { supabase, saveRemoteNotificationToSupabase } from './supabaseClient';
+import type { PushSubscriptionData, NotificationLog, ReminderSettings } from '../types';
 
 const PUBLIC_VAPID_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || 'BEl62iUYgUivxIkv69yViEuiBIa-59y-vD3-p8_J93Jp39-5_k';
 
@@ -38,14 +38,15 @@ export async function requestPushSubscription(userId: string): Promise<boolean> 
       });
     }
 
-    const p256dh = subscription.getKey('p256dh');
-    const auth = subscription.getKey('auth');
+    const subJson = subscription.toJSON();
+    const p256dhKey = subJson.keys?.p256dh || '';
+    const authKey = subJson.keys?.auth || '';
 
     const subData: PushSubscriptionData = {
       userId,
       endpoint: subscription.endpoint,
-      p256dh: p256dh ? btoa(String.fromCharCode(...new Uint8Array(p256dh))) : '',
-      auth: auth ? btoa(String.fromCharCode(...new Uint8Array(auth))) : '',
+      p256dh: p256dhKey,
+      auth: authKey,
       createdAt: new Date().toISOString(),
     };
 
@@ -86,25 +87,28 @@ export async function triggerTestNotification(userName: string = 'Friend'): Prom
   const body = `Hey ${userName}! 💕 Local notifications are working! (Scheduled test in 5s...)`;
 
   try {
+    const options: any = {
+      body,
+      icon: 'apple-touch-icon.png',
+      badge: 'apple-touch-icon.png',
+      vibrate: [200, 100, 200],
+    };
+
     if ('serviceWorker' in navigator) {
       const reg = await navigator.serviceWorker.ready;
-      await reg.showNotification(title, {
-        body,
-        icon: 'apple-touch-icon.png',
-        badge: 'apple-touch-icon.png',
-        vibrate: [200, 100, 200],
-      });
+      await reg.showNotification(title, options);
 
       // Schedule a 5-second delayed notification so user can lock/minimize screen
       setTimeout(async () => {
-        await reg.showNotification('HydraLove ⏰ Delayed Test (5s)', {
+        const delayedOptions: any = {
           body: `Drink water, ${userName}! 🌸 Your screen lock test succeeded!`,
           icon: 'apple-touch-icon.png',
           vibrate: [300, 100, 300],
-        });
+        };
+        await reg.showNotification('HydraLove ⏰ Delayed Test (5s)', delayedOptions);
       }, 5000);
     } else {
-      new Notification(title, { body, icon: 'apple-touch-icon.png' });
+      new Notification(title, options);
     }
 
     return { success: true, message: 'Test alert sent! Second test will fire in 5 seconds (lock your screen to test).' };
@@ -146,30 +150,84 @@ export async function sendAdminPushNotification(targetUserId: string, message: s
 export function initLocalHydrationReminders(getUserName: () => string) {
   if (typeof window === 'undefined') return;
 
-  setInterval(async () => {
-    const reminderSettings = await getSetting('reminder_settings');
-    if (!reminderSettings || !reminderSettings.enabled) return;
+  // Initialize test mode to true by default for testing
+  if (localStorage.getItem('hydralove_test_mode_minute') === null) {
+    localStorage.setItem('hydralove_test_mode_minute', 'true');
+  }
+
+  const checkAndTriggerReminder = async () => {
+    const reminderSettings = await getSetting<ReminderSettings>('reminder_settings');
+    if (reminderSettings && !reminderSettings.enabled) return;
+
+    const isEveryMinuteTestMode = localStorage.getItem('hydralove_test_mode_minute') !== 'false';
 
     const now = new Date();
-    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const todayDateStr = now.toISOString().split('T')[0];
+    const minutesStr = String(now.getMinutes()).padStart(2, '0');
+    const hoursStr = String(now.getHours()).padStart(2, '0');
 
-    if (reminderSettings.times?.includes(timeStr) && now.getSeconds() < 10) {
-      if ('Notification' in window && Notification.permission === 'granted') {
-        const name = getUserName() || 'Friend';
-        const title = 'Hydration Time 💧';
-        const options = {
-          body: `Hey ${name}! 💕 It's time for a little water break!`,
-          icon: 'apple-touch-icon.png',
-          vibrate: [200, 100, 200],
-        };
+    let timeKey = '';
+    let shouldFire = false;
+    let notifBody = '';
 
+    if (isEveryMinuteTestMode) {
+      // 1-Minute Test Mode: Fire once every minute
+      timeKey = `${todayDateStr}_${hoursStr}:${minutesStr}`;
+      const lastNotifiedMinute = localStorage.getItem('hydralove_last_notified_minute');
+      if (lastNotifiedMinute !== timeKey) {
+        shouldFire = true;
+        notifBody = `Hey ${getUserName() || 'Friend'}! 💕 1-minute reminder test (${hoursStr}:${minutesStr}). Drink water! 💧`;
+      }
+    } else {
+      // Hourly Mode: Fire once per scheduled hour
+      const currentHourStr = `${hoursStr}:00`;
+      timeKey = `${todayDateStr}_${hoursStr}`;
+      const lastNotifiedHour = localStorage.getItem('hydralove_last_notified_hour');
+
+      if (reminderSettings?.times?.includes(currentHourStr) && lastNotifiedHour !== timeKey) {
+        shouldFire = true;
+        notifBody = `Hey ${getUserName() || 'Friend'}! 💕 It's time for a little water break! 💧`;
+      }
+    }
+
+    if (shouldFire && 'Notification' in window && Notification.permission === 'granted') {
+      if (isEveryMinuteTestMode) {
+        localStorage.setItem('hydralove_last_notified_minute', timeKey);
+      } else {
+        localStorage.setItem('hydralove_last_notified_hour', timeKey);
+      }
+
+      const title = isEveryMinuteTestMode ? 'Hydration 1-Min Test ⏰💧' : 'Hydration Time 💧';
+      const options: any = {
+        body: notifBody,
+        icon: 'apple-touch-icon.png',
+        badge: 'apple-touch-icon.png',
+        vibrate: [200, 100, 200],
+      };
+
+      try {
         if ('serviceWorker' in navigator) {
           const reg = await navigator.serviceWorker.ready;
-          reg.showNotification(title, options);
+          await reg.showNotification(title, options);
         } else {
           new Notification(title, options);
         }
+      } catch (e) {
+        console.warn('Error showing reminder notification:', e);
       }
     }
-  }, 30000);
+  };
+
+  // Run check every 5 seconds so minute transitions are picked up instantly
+  setInterval(checkAndTriggerReminder, 5000);
+
+  // Run when user unlocks screen or app becomes visible
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      checkAndTriggerReminder();
+    }
+  });
+
+  // Run immediately on page load
+  checkAndTriggerReminder();
 }

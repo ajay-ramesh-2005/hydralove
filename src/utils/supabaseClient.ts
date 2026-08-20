@@ -280,7 +280,7 @@ export async function saveRemoteNotificationToSupabase(logEntry: any, senderUser
 /**
  * Fetches recent notifications from Supabase with fail-safe matching for iPhone & Android
  */
-export async function fetchRemoteNotificationsFromSupabase(myUserId: string) {
+export async function fetchRemoteNotificationsFromSupabase(_myUserId?: string) {
   const client = getSupabaseClient();
   if (!client) return [];
 

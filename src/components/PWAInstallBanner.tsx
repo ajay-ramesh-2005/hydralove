@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Download, Smartphone, Share, PlusSquare, X, Check } from 'lucide-react';
+import { Smartphone, Share, PlusSquare, X } from 'lucide-react';
 import { playTapSound } from '../utils/soundEffects';
 
 interface PWAInstallBannerProps {

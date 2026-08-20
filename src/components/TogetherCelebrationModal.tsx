@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { KawaiiCharacter } from './KawaiiCharacter';
 import type { UserProfile } from '../types';
-import { Heart, Sparkles, X } from 'lucide-react';
+import { Sparkles, X } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { playCelebrationSound } from '../utils/soundEffects';
 
@@ -59,7 +59,7 @@ export const TogetherCelebrationModal: React.FC<TogetherCelebrationModalProps> =
           <div className="absolute top-2 left-0 right-0 h-4 bg-sky-300/60 rounded-full" />
 
           <div className="flex flex-col items-center z-10">
-            <KawaiiCharacter emotion="super_happy" scale={0.75} />
+            <KawaiiCharacter emotion="super_happy" percentage={100} scale={0.75} />
             <span className="text-[11px] font-bold text-white bg-pink-400 px-2 py-0.5 rounded-full shadow-xs -mt-2">
               {user1.name} 💧
             </span>
@@ -74,7 +74,7 @@ export const TogetherCelebrationModal: React.FC<TogetherCelebrationModalProps> =
           </motion.div>
 
           <div className="flex flex-col items-center z-10">
-            <KawaiiCharacter emotion="super_happy" scale={0.75} />
+            <KawaiiCharacter emotion="super_happy" percentage={100} scale={0.75} />
             <span className="text-[11px] font-bold text-white bg-pink-400 px-2 py-0.5 rounded-full shadow-xs -mt-2">
               {user2.name} 💧
             </span>

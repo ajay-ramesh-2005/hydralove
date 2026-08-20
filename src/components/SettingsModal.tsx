@@ -45,6 +45,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [weightKg, setWeightKg] = useState(String(activeProfile.weightKg));
   const [selectedMyUserId, setSelectedMyUserId] = useState(myUserId);
   const [remindersEnabled, setRemindersEnabled] = useState(reminderSettings.enabled);
+  const [isMinuteTestMode, setIsMinuteTestMode] = useState<boolean>(
+    localStorage.getItem('hydralove_test_mode_minute') !== 'false'
+  );
   const [isSubscribingPush, setIsSubscribingPush] = useState(false);
   const [testNotifResult, setTestNotifResult] = useState('');
 
@@ -71,6 +74,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       ...reminderSettings,
       enabled: next,
     });
+  };
+
+  const handleToggleMinuteTestMode = () => {
+    playTapSound();
+    const next = !isMinuteTestMode;
+    setIsMinuteTestMode(next);
+    localStorage.setItem('hydralove_test_mode_minute', next ? 'true' : 'false');
   };
 
   const handlePushToggle = async () => {
@@ -210,7 +220,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="flex items-center justify-between">
               <div>
                 <span className="text-xs font-bold text-slate-800 block">Offline Hydration Reminders</span>
-                <span className="text-[10px] text-slate-400 block">Hourly reminder alerts</span>
+                <span className="text-[10px] text-slate-400 block">Scheduled reminder alerts</span>
               </div>
               <button
                 onClick={handleToggleReminders}
@@ -221,6 +231,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div
                   className={`w-5 h-5 rounded-full bg-white shadow-xs transition-transform ${
                     remindersEnabled ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* 1-Minute Test Mode Toggle */}
+            <div className="flex items-center justify-between pt-1">
+              <div>
+                <span className="text-xs font-bold text-slate-800 block">1-Minute Test Mode ⏱️</span>
+                <span className="text-[10px] text-amber-600 font-semibold block">Sends reminder every minute</span>
+              </div>
+              <button
+                onClick={handleToggleMinuteTestMode}
+                className={`w-11 h-6 rounded-full transition-colors relative p-0.5 ${
+                  isMinuteTestMode ? 'bg-amber-400' : 'bg-slate-300'
+                }`}
+              >
+                <div
+                  className={`w-5 h-5 rounded-full bg-white shadow-xs transition-transform ${
+                    isMinuteTestMode ? 'translate-x-5' : 'translate-x-0'
                   }`}
                 />
               </button>

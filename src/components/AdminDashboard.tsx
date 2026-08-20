@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import type { UserProfile, HydrationEntry, NotificationLog } from '../types';
 import { KawaiiCharacter } from './KawaiiCharacter';
-import { formatMlToLiters, calculateDailyGoalMl } from '../utils/hydrationGoal';
-import { Heart, Send, Calendar, TrendingUp, Bell, Clock, Sparkles, X, User, Edit3, Save, Database, Check, AlertCircle, Smartphone, Zap } from 'lucide-react';
+import { formatMlToLiters } from '../utils/hydrationGoal';
+import { Heart, Send, TrendingUp, Bell, X, User, Edit3, Save, Database, Check, AlertCircle, Zap } from 'lucide-react';
 import { playTapSound, playCelebrationSound } from '../utils/soundEffects';
 import { getSupabaseCredentials, saveSupabaseCredentials, getSupabaseClient } from '../utils/supabaseClient';
 import { triggerTestNotification } from '../utils/pushNotifications';
@@ -23,7 +23,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onClose,
   onSendCustomNotification,
   onSaveProfileNames,
-  notificationLogs,
 }) => {
   const [activeTab, setActiveTab] = useState<'today' | 'history' | 'push' | 'profiles' | 'database'>('today');
   const [historyFilter, setHistoryFilter] = useState<'today' | 'yesterday' | '7days' | '30days'>('7days');

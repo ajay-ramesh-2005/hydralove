@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { UserProfile, HydrationEntry, ReminderSettings, NotificationLog } from './types';
 import {
-  getProfileFromDB,
   saveProfileToDB,
   getAllProfilesFromDB,
   getEntriesForUserAndDate,
@@ -40,7 +39,7 @@ import { PWAInstallBanner } from './components/PWAInstallBanner';
 
 export const App: React.FC = () => {
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
-  const [activeUserId, setActiveUserId] = useState<string>('user_1');
+  const [_activeUserId, setActiveUserId] = useState<string>('user_1');
   const [myUserId, setMyUserId] = useState<string>('user_1');
   const [activeProfile, setActiveProfile] = useState<UserProfile | null>(null);
   const [isDeviceConfigured, setIsDeviceConfigured] = useState<boolean>(true);
@@ -100,16 +99,17 @@ export const App: React.FC = () => {
     // Trigger OS level push notification
     if ('Notification' in window && Notification.permission === 'granted') {
       try {
+        const notifOptions: any = {
+          body: notif.message,
+          icon: 'apple-touch-icon.png',
+          badge: 'apple-touch-icon.png',
+          vibrate: [200, 100, 200],
+        };
         if ('serviceWorker' in navigator) {
           const reg = await navigator.serviceWorker.ready;
-          await reg.showNotification('HydraLove 💧', {
-            body: notif.message,
-            icon: 'apple-touch-icon.png',
-            badge: 'apple-touch-icon.png',
-            vibrate: [200, 100, 200],
-          });
+          await reg.showNotification('HydraLove 💧', notifOptions);
         } else {
-          new Notification('HydraLove 💧', { body: notif.message, icon: 'apple-touch-icon.png' });
+          new Notification('HydraLove 💧', notifOptions);
         }
       } catch (err) {
         console.warn('Error popping OS notification:', err);

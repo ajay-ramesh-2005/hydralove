@@ -1,6 +1,6 @@
 import { openDB } from 'idb';
 import type { DBSchema, IDBPDatabase } from 'idb';
-import type { UserProfile, HydrationEntry, ReminderSettings, NotificationLog } from '../types';
+import type { UserProfile, HydrationEntry, NotificationLog } from '../types';
 
 interface HydraLoveDBSchema extends DBSchema {
   profiles: {

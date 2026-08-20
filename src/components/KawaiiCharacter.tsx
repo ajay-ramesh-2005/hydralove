@@ -11,7 +11,7 @@ interface KawaiiCharacterProps {
 }
 
 export const KawaiiCharacter: React.FC<KawaiiCharacterProps> = ({
-  emotion,
+  emotion: _emotion,
   percentage,
   isAddingWater = false,
   justDrank = false,
@@ -25,10 +25,6 @@ export const KawaiiCharacter: React.FC<KawaiiCharacterProps> = ({
       setReactionType(Math.floor(Math.random() * 5));
     }
   }, [isAddingWater, justDrank]);
-
-  const effectiveEmotion = justDrank
-    ? (percentage < 30 ? 'better' : percentage < 80 ? 'excited' : 'super_happy')
-    : emotion;
 
   // Eyes rendering: Unique expressions per percentage milestone
   const renderEyes = () => {
@@ -225,7 +221,7 @@ export const KawaiiCharacter: React.FC<KawaiiCharacterProps> = ({
   };
 
   // Motion physics: Squishy mochi bounce variations
-  const getMotionAnimation = () => {
+  const getMotionAnimation = (): any => {
     if (isAddingWater || justDrank) {
       if (reactionType === 1) {
         // High double hop

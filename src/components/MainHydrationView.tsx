@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { UserProfile, HydrationEntry, EmotionState } from '../types';
 import { KawaiiGarden } from './KawaiiGarden';
-import { formatMlToLiters, getLocalDateString } from '../utils/hydrationGoal';
+import { formatMlToLiters } from '../utils/hydrationGoal';
 import { getRandomMotivationalMessage, getEmotionMessage } from '../utils/motivationalMessages';
 import { playSplashSound, playTapSound, playMilestoneSound, playCelebrationSound } from '../utils/soundEffects';
-import { Heart, Settings, Plus, Trash2, History, Users, Sparkles, Droplets } from 'lucide-react';
+import { Heart, Settings, Plus, Trash2, History, Sparkles, Droplets } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface MainHydrationViewProps {
@@ -48,7 +48,7 @@ export const MainHydrationView: React.FC<MainHydrationViewProps> = ({
   const [toastMessage, setToastMessage] = useState<string>('');
   
   const [dropletTapCount, setDropletTapCount] = useState<number>(0);
-  const [dropletTapTimer, setDropletTapTimer] = useState<NodeJS.Timeout | null>(null);
+  const [dropletTapTimer, setDropletTapTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
 
   const [heartToast, setHeartToast] = useState<string>('');
 
