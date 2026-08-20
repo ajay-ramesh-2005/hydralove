@@ -10,6 +10,16 @@ clientsClaim();
 // Precache static assets built by Vite
 precacheAndRoute(self.__WB_MANIFEST || []);
 
+function getSWAssetUrl(filename: string): string {
+  const origin = self.location.origin;
+  const path = self.location.pathname;
+  let dirPath = path.substring(0, path.lastIndexOf('/') + 1);
+  if (!dirPath || dirPath === '/') {
+    dirPath = '/hydralove/';
+  }
+  return `${origin}${dirPath}${filename}`;
+}
+
 self.lastNotifiedSlot = self.lastNotifiedSlot || '';
 
 function checkBackgroundReminders() {
@@ -29,10 +39,11 @@ function checkBackgroundReminders() {
 
       const userName = self.userName || 'Friend';
       const title = 'Hydration Time 💧';
+      const iconUrl = getSWAssetUrl('apple-touch-icon.png');
       const options: any = {
         body: `Hey ${userName}! 💕 It's time for a little water break!`,
-        icon: '/apple-touch-icon.png',
-        badge: '/apple-touch-icon.png',
+        icon: iconUrl,
+        badge: iconUrl,
         vibrate: [200, 100, 200],
         data: '/',
       };
@@ -80,10 +91,11 @@ self.addEventListener('push', (event: any) => {
   }
 
   const title = data.title || 'HydraLove 💧 Remind';
+  const iconUrl = getSWAssetUrl('apple-touch-icon.png');
   const options: NotificationOptions = {
     body: data.body || 'Time for a water break! 💕',
-    icon: '/apple-touch-icon.png',
-    badge: '/apple-touch-icon.png',
+    icon: iconUrl,
+    badge: iconUrl,
     data: data.url || '/',
   };
 
