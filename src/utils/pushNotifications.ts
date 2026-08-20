@@ -278,22 +278,22 @@ export function initLocalHydrationReminders(getUserName: () => string) {
     const minutesStr = String(now.getMinutes()).padStart(2, '0');
     const currentTimeStr = `${hoursStr}:${minutesStr}`;
 
-    // 2-Minute Interval Check: triggers on every even minute (12:06, 12:08, 12:10...)
-    const isScheduledSlot = now.getMinutes() % 2 === 0;
+    // 2-Minute Interval Check: ONLY triggers on current even minute (12:20, 12:22, 12:24...)
+    const isEvenMinute = now.getMinutes() % 2 === 0;
     const slotKey = `${todayDateStr}_${currentTimeStr}`;
     const lastNotifiedSlot = localStorage.getItem('hydralove_last_notified_slot');
 
-    if (isScheduledSlot && lastNotifiedSlot !== slotKey) {
+    // FIRE ONLY ONCE FOR THE CURRENT MINUTE. Never loop or spam past missed slots!
+    if (isEvenMinute && lastNotifiedSlot !== slotKey) {
+      localStorage.setItem('hydralove_last_notified_slot', slotKey);
+
       const title = 'Hydration Time 💧';
       const options: any = {
         body: `Hey ${name}! 💕 It's time for a little water break!`,
         vibrate: [200, 100, 200],
       };
 
-      const result = await safeShowNotification(title, options);
-      if (result.success) {
-        localStorage.setItem('hydralove_last_notified_slot', slotKey);
-      }
+      await safeShowNotification(title, options);
     }
   };
 

@@ -30,11 +30,12 @@ function checkBackgroundReminders() {
     const minutesStr = String(now.getMinutes()).padStart(2, '0');
     const currentTimeStr = `${hoursStr}:${minutesStr}`;
 
-    // 2-Minute Interval: trigger on every even minute (12:06, 12:08, 12:10...)
-    const isScheduled = now.getMinutes() % 2 === 0;
+    // 2-Minute Interval: trigger ONLY on current even minute (12:20, 12:22, 12:24...)
+    const isEvenMinute = now.getMinutes() % 2 === 0;
     const slotKey = `sw_${todayDateStr}_${currentTimeStr}`;
 
-    if (isScheduled && self.lastNotifiedSlot !== slotKey) {
+    // FIRE ONLY ONCE FOR THE CURRENT MINUTE. Never spam multiple past notifications!
+    if (isEvenMinute && self.lastNotifiedSlot !== slotKey) {
       self.lastNotifiedSlot = slotKey;
 
       const userName = self.userName || 'Friend';
