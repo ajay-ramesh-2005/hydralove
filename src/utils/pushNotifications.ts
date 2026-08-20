@@ -255,6 +255,48 @@ export async function sendAdminPushNotification(targetUserId: string, message: s
   return true;
 }
 
+export async function scheduleOfflineNotificationTriggers(getUserName: () => string) {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+
+  try {
+    const isTimestampTriggerSupported = 'showTrigger' in Notification.prototype || 'TimestampTrigger' in window;
+    if (!isTimestampTriggerSupported) return;
+
+    const reminderSettings = await getSetting<ReminderSettings>('reminder_settings');
+    const enabled = reminderSettings ? reminderSettings.enabled : true;
+    if (!enabled) return;
+
+    const times = (reminderSettings?.times && reminderSettings.times.length > 0)
+      ? reminderSettings.times
+      : DEFAULT_REMINDER_TIMES;
+
+    const reg = await navigator.serviceWorker.ready;
+    const name = getUserName() || 'Friend';
+    const TimestampTrigger = (window as any).TimestampTrigger;
+
+    for (const timeStr of times) {
+      const [h, m] = timeStr.split(':').map(Number);
+      const targetDate = new Date();
+      targetDate.setHours(h, m, 0, 0);
+
+      if (targetDate.getTime() < Date.now()) {
+        targetDate.setDate(targetDate.getDate() + 1); // schedule for tomorrow
+      }
+
+      await reg.showNotification('Hydration Time 💧', {
+        body: `Hey ${name}! 💕 It's time for a little water break!`,
+        icon: getAbsoluteAppUrl('apple-touch-icon.png'),
+        badge: getAbsoluteAppUrl('apple-touch-icon.png'),
+        vibrate: [200, 100, 200],
+        showTrigger: new TimestampTrigger(targetDate.getTime()),
+        tag: `hydration_slot_${targetDate.getTime()}`,
+      } as any);
+    }
+  } catch (err) {
+    console.warn('NotificationTriggers scheduling note:', err);
+  }
+}
+
 export function initLocalHydrationReminders(getUserName: () => string) {
   if (typeof window === 'undefined') return;
 
@@ -305,6 +347,9 @@ export function initLocalHydrationReminders(getUserName: () => string) {
       }
     }
   };
+
+  // Schedule native OS offline alarms
+  scheduleOfflineNotificationTriggers(getUserName);
 
   // Run check every 5 seconds
   setInterval(checkAndTriggerReminder, 5000);
