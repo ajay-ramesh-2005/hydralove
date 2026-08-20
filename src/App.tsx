@@ -96,8 +96,9 @@ export const App: React.FC = () => {
     setTimeout(() => setInAppToast(null), 7000);
     playCelebrationSound();
 
-    // Trigger OS level push notification
-    if ('Notification' in window && Notification.permission === 'granted') {
+    // Trigger OS level push notification ONLY for fresh messages (<60s old)
+    const isFresh = notif.sentAt ? (Date.now() - new Date(notif.sentAt).getTime() < 60000) : true;
+    if (isFresh && 'Notification' in window && Notification.permission === 'granted') {
       try {
         const notifOptions: any = {
           body: notif.message,
