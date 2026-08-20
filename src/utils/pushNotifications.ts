@@ -4,6 +4,13 @@ import type { PushSubscriptionData, NotificationLog, ReminderSettings } from '..
 
 const PUBLIC_VAPID_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || 'BEl62iUYgUivxIkv69yViEuiBIa-59y-vD3-p8_J93Jp39-5_k';
 
+const DEFAULT_REMINDER_TIMES = [
+  '09:00', '10:00', '11:00', '12:00',
+  '13:00', '14:00', '15:00', '16:00',
+  '17:00', '18:00', '19:00', '20:00',
+  '21:00', '22:00', '23:00', '00:00'
+];
+
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -117,7 +124,6 @@ async function safeShowNotification(title: string, options: any): Promise<{ succ
     try {
       let reg: ServiceWorkerRegistration | undefined;
 
-      // 1. Try ready ServiceWorker Registration
       const readyReg = await Promise.race([
         navigator.serviceWorker.ready,
         new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 1500)),
@@ -132,7 +138,6 @@ async function safeShowNotification(title: string, options: any): Promise<{ succ
         }
       }
 
-      // 2. If no active registration, perform fresh registration
       if (!reg) {
         reg = await navigator.serviceWorker.register(swUrl, { scope: getAbsoluteAppUrl('') });
       }
@@ -143,8 +148,7 @@ async function safeShowNotification(title: string, options: any): Promise<{ succ
       }
     } catch (swErr: any) {
       console.warn('First SW showNotification attempt failed, retrying fresh registration:', swErr);
-      
-      // Retry fresh registration on error (handles bad cache / 404 recovery)
+
       try {
         const freshReg = await navigator.serviceWorker.register(swUrl, { scope: getAbsoluteAppUrl('') });
         if (freshReg && typeof freshReg.showNotification === 'function') {
@@ -254,14 +258,14 @@ export async function sendAdminPushNotification(targetUserId: string, message: s
 export function initLocalHydrationReminders(getUserName: () => string) {
   if (typeof window === 'undefined') return;
 
-  // Default minute test mode to true for testing
-  if (localStorage.getItem('hydralove_test_mode_minute') === null) {
-    localStorage.setItem('hydralove_test_mode_minute', 'true');
-  }
-
   const checkAndTriggerReminder = async () => {
     const reminderSettings = await getSetting<ReminderSettings>('reminder_settings');
-    if (reminderSettings && !reminderSettings.enabled) return;
+    const enabled = reminderSettings ? reminderSettings.enabled : true;
+    if (!enabled) return;
+
+    const times = (reminderSettings?.times && reminderSettings.times.length > 0)
+      ? reminderSettings.times
+      : DEFAULT_REMINDER_TIMES;
 
     const isEveryMinuteTestMode = localStorage.getItem('hydralove_test_mode_minute') !== 'false';
 
@@ -282,7 +286,7 @@ export function initLocalHydrationReminders(getUserName: () => string) {
       // Hourly Mode: Hours with :00 are scheduled slots (09:00, 10:00, 11:00...)
       const currentHourSlot = `${hoursStr}:00`;
       slotKey = `${todayDateStr}_${hoursStr}`;
-      isScheduledSlot = reminderSettings?.times?.includes(currentHourSlot) ?? false;
+      isScheduledSlot = times.includes(currentHourSlot);
     }
 
     const lastNotifiedSlot = localStorage.getItem('hydralove_last_notified_slot');
