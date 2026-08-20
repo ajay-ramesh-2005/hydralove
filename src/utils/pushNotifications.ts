@@ -1,15 +1,8 @@
-import { getSetting, saveSetting, saveNotificationLog } from './indexedDB';
+import { saveSetting, saveNotificationLog } from './indexedDB';
 import { supabase, saveRemoteNotificationToSupabase } from './supabaseClient';
-import type { PushSubscriptionData, NotificationLog, ReminderSettings } from '../types';
+import type { PushSubscriptionData, NotificationLog } from '../types';
 
 const PUBLIC_VAPID_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || 'BEl62iUYgUivxIkv69yViEuiBIa-59y-vD3-p8_J93Jp39-5_k';
-
-const DEFAULT_REMINDER_TIMES = [
-  '09:00', '10:00', '11:00', '12:00',
-  '13:00', '14:00', '15:00', '16:00',
-  '17:00', '18:00', '19:00', '20:00',
-  '21:00', '22:00', '23:00', '00:00'
-];
 
 function urlBase64ToUint8Array(base64String: string) {
   try {
@@ -40,12 +33,10 @@ export function getAbsoluteAppUrl(filename: string): string {
 
 export function syncSWConfig(userName: string) {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
-  const isEveryMinuteTestMode = localStorage.getItem('hydralove_test_mode_minute') !== 'false';
   if (navigator.serviceWorker.controller) {
     navigator.serviceWorker.controller.postMessage({
       type: 'SYNC_SW_CONFIG',
       userName,
-      isMinuteMode: isEveryMinuteTestMode,
     });
   }
 }
@@ -277,48 +268,6 @@ export async function sendAdminPushNotification(targetUserId: string, message: s
   return true;
 }
 
-export async function scheduleOfflineNotificationTriggers(getUserName: () => string) {
-  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
-
-  try {
-    const isTimestampTriggerSupported = 'showTrigger' in Notification.prototype || 'TimestampTrigger' in window;
-    if (!isTimestampTriggerSupported) return;
-
-    const reminderSettings = await getSetting<ReminderSettings>('reminder_settings');
-    const enabled = reminderSettings ? reminderSettings.enabled : true;
-    if (!enabled) return;
-
-    const times = (reminderSettings?.times && reminderSettings.times.length > 0)
-      ? reminderSettings.times
-      : DEFAULT_REMINDER_TIMES;
-
-    const reg = await navigator.serviceWorker.ready;
-    const name = getUserName() || 'Friend';
-    const TimestampTrigger = (window as any).TimestampTrigger;
-
-    for (const timeStr of times) {
-      const [h, m] = timeStr.split(':').map(Number);
-      const targetDate = new Date();
-      targetDate.setHours(h, m, 0, 0);
-
-      if (targetDate.getTime() < Date.now()) {
-        targetDate.setDate(targetDate.getDate() + 1); // schedule for tomorrow
-      }
-
-      await reg.showNotification('Hydration Time 💧', {
-        body: `Hey ${name}! 💕 It's time for a little water break!`,
-        icon: getAbsoluteAppUrl('apple-touch-icon.png'),
-        badge: getAbsoluteAppUrl('apple-touch-icon.png'),
-        vibrate: [200, 100, 200],
-        showTrigger: new TimestampTrigger(targetDate.getTime()),
-        tag: `hydration_slot_${targetDate.getTime()}`,
-      } as any);
-    }
-  } catch (err) {
-    console.warn('NotificationTriggers scheduling note:', err);
-  }
-}
-
 export function initLocalHydrationReminders(getUserName: () => string) {
   if (typeof window === 'undefined') return;
 
@@ -326,36 +275,15 @@ export function initLocalHydrationReminders(getUserName: () => string) {
     const name = getUserName() || 'Friend';
     syncSWConfig(name);
 
-    const reminderSettings = await getSetting<ReminderSettings>('reminder_settings');
-    const enabled = reminderSettings ? reminderSettings.enabled : true;
-    if (!enabled) return;
-
-    const times = (reminderSettings?.times && reminderSettings.times.length > 0)
-      ? reminderSettings.times
-      : DEFAULT_REMINDER_TIMES;
-
-    const isEveryMinuteTestMode = localStorage.getItem('hydralove_test_mode_minute') !== 'false';
-
     const now = new Date();
     const todayDateStr = now.toISOString().split('T')[0];
     const hoursStr = String(now.getHours()).padStart(2, '0');
     const minutesStr = String(now.getMinutes()).padStart(2, '0');
     const currentTimeStr = `${hoursStr}:${minutesStr}`;
 
-    let slotKey = '';
-    let isScheduledSlot = false;
-
-    if (isEveryMinuteTestMode) {
-      // 1-Minute Mode: Every minute is a scheduled slot (09:00, 09:01, 09:02...)
-      slotKey = `${todayDateStr}_${currentTimeStr}`;
-      isScheduledSlot = true;
-    } else {
-      // Hourly Mode: Hours with :00 are scheduled slots (09:00, 10:00, 11:00...)
-      const currentHourSlot = `${hoursStr}:00`;
-      slotKey = `${todayDateStr}_${hoursStr}`;
-      isScheduledSlot = times.includes(currentHourSlot);
-    }
-
+    // 2-Minute Interval Check: triggers on every even minute (12:06, 12:08, 12:10...)
+    const isScheduledSlot = now.getMinutes() % 2 === 0;
+    const slotKey = `${todayDateStr}_${currentTimeStr}`;
     const lastNotifiedSlot = localStorage.getItem('hydralove_last_notified_slot');
 
     if (isScheduledSlot && lastNotifiedSlot !== slotKey) {
@@ -371,9 +299,6 @@ export function initLocalHydrationReminders(getUserName: () => string) {
       }
     }
   };
-
-  // Schedule native OS offline alarms
-  scheduleOfflineNotificationTriggers(getUserName);
 
   // Run check every 5 seconds
   setInterval(checkAndTriggerReminder, 5000);

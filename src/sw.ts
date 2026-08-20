@@ -10,13 +10,6 @@ clientsClaim();
 // Precache static assets built by Vite
 precacheAndRoute(self.__WB_MANIFEST || []);
 
-const DEFAULT_HOURLY_SLOTS = [
-  '09:00', '10:00', '11:00', '12:00',
-  '13:00', '14:00', '15:00', '16:00',
-  '17:00', '18:00', '19:00', '20:00',
-  '21:00', '22:00', '23:00', '00:00'
-];
-
 self.lastNotifiedSlot = self.lastNotifiedSlot || '';
 
 function checkBackgroundReminders() {
@@ -27,19 +20,9 @@ function checkBackgroundReminders() {
     const minutesStr = String(now.getMinutes()).padStart(2, '0');
     const currentTimeStr = `${hoursStr}:${minutesStr}`;
 
-    const currentHourSlot = `${hoursStr}:00`;
-    const isMinuteMode = self.isMinuteMode === true;
-
-    let slotKey = '';
-    let isScheduled = false;
-
-    if (isMinuteMode) {
-      slotKey = `sw_${todayDateStr}_${currentTimeStr}`;
-      isScheduled = true;
-    } else {
-      slotKey = `sw_${todayDateStr}_${hoursStr}`;
-      isScheduled = DEFAULT_HOURLY_SLOTS.includes(currentHourSlot);
-    }
+    // 2-Minute Interval: trigger on every even minute (12:06, 12:08, 12:10...)
+    const isScheduled = now.getMinutes() % 2 === 0;
+    const slotKey = `sw_${todayDateStr}_${currentTimeStr}`;
 
     if (isScheduled && self.lastNotifiedSlot !== slotKey) {
       self.lastNotifiedSlot = slotKey;
@@ -64,14 +47,13 @@ function checkBackgroundReminders() {
 }
 
 // Background interval running in Service Worker thread
-setInterval(checkBackgroundReminders, 10000);
+setInterval(checkBackgroundReminders, 5000);
 
-// Listen to messages from window tab to sync user profile and mode
+// Listen to messages from window tab to sync user profile
 self.addEventListener('message', (event: any) => {
   if (event.data) {
     if (event.data.type === 'SYNC_SW_CONFIG') {
       self.userName = event.data.userName;
-      self.isMinuteMode = event.data.isMinuteMode;
     }
     if (event.data.type === 'TRIGGER_CHECK') {
       checkBackgroundReminders();
