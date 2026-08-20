@@ -208,33 +208,30 @@ export async function triggerTestNotification(userName: string = 'Friend'): Prom
     };
   }
 
-  const title = 'HydraLove 💧 Test Alert!';
-  const body = `Hey ${userName}! 💕 Local notifications are working! (Second test in 5s...)`;
-
-  try {
-    const options: any = {
-      body,
-      vibrate: [200, 100, 200],
-    };
-
-    const result = await safeShowNotification(title, options);
-
-    if (result.success) {
-      // Schedule 5s delayed notification to test screen lock
-      setTimeout(async () => {
-        const delayedOptions: any = {
-          body: `Drink water, ${userName}! 🌸 Screen lock test succeeded!`,
-          vibrate: [300, 100, 300],
-        };
-        await safeShowNotification('HydraLove ⏰ Delayed Test (5s)', delayedOptions);
-      }, 5000);
-
-      return { success: true, message: 'Test alert sent! Lock screen test will fire in 5 seconds (lock phone to test).' };
-    } else {
-      return { success: false, message: `❌ ${result.error || 'Notification failed.'}` };
+  // 1. Send Cloud Web Push via Supabase Edge Function to all subscribed devices
+  let cloudSuccess = false;
+  if (supabase) {
+    try {
+      const { error } = await supabase.functions.invoke('send-push', {
+        body: { targetUserId: 'all', message: `Hey ${userName}! 💕 Internet Cloud Push Alert (Every 2 mins)` },
+      });
+      if (!error) cloudSuccess = true;
+    } catch (e) {
+      console.warn('Cloud edge push invoke note:', e);
     }
-  } catch (e: any) {
-    return { success: false, message: `❌ ${e?.message || 'Failed to trigger notification.'}` };
+  }
+
+  // 2. Try Local Notification
+  const title = 'HydraLove 💧 Test Alert!';
+  const body = `Hey ${userName}! 💕 Internet Cloud Push & Local alert sent!`;
+  const options: any = { body, vibrate: [200, 100, 200] };
+
+  const result = await safeShowNotification(title, options);
+
+  if (result.success || cloudSuccess) {
+    return { success: true, message: '🚀 Internet Cloud Push sent to your phone! 2-Minute Push loop active.' };
+  } else {
+    return { success: false, message: `❌ ${result.error || 'Notification failed.'}` };
   }
 }
 

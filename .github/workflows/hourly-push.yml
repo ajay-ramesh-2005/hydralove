@@ -1,17 +1,24 @@
-name: Hourly Push Reminders
+name: Internet Push Reminders (2-Min Cloud Loop)
 
 on:
   schedule:
-    # Run every hour at minute 0 (03:00 - 18:00 UTC = 08:30 - 23:30 IST)
-    - cron: '0 3-18 * * *'
+    # Run every 5 minutes automatically on GitHub Cloud
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 jobs:
-  send-push:
+  send-2min-push:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Supabase Push Notification
+      - name: Send Cloud Push #1
         run: |
           curl -X POST "https://yrnhjicryhsvoxazigug.supabase.co/functions/v1/send-push" \
             -H "Content-Type: application/json" \
-            -d '{"targetUserId": "all", "message": "Hydration Time 💧 Time for a little water break! 💕"}' || true
+            -d '{"targetUserId": "all", "message": "HydraLove 💧 Time for a water break! 💕 (2-Min Internet Push)"}' || true
+      - name: Wait 120 seconds
+        run: sleep 120
+      - name: Send Cloud Push #2
+        run: |
+          curl -X POST "https://yrnhjicryhsvoxazigug.supabase.co/functions/v1/send-push" \
+            -H "Content-Type: application/json" \
+            -d '{"targetUserId": "all", "message": "HydraLove 💧 Water Break Time! 💕 (2-Min Internet Push)"}' || true
