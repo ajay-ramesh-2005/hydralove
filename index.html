@@ -2,6 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      if (window.location.hostname.includes('github.io') && !window.location.pathname.startsWith('/hydralove')) {
+        window.location.replace('https://ajay-ramesh-2005.github.io/hydralove/');
+      }
+    </script>
     <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
     <link rel="apple-touch-icon-precomposed" href="apple-touch-icon-precomposed.png" />
