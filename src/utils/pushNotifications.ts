@@ -2,7 +2,8 @@ import { saveSetting, saveNotificationLog } from './indexedDB';
 import { supabase, saveRemoteNotificationToSupabase } from './supabaseClient';
 import type { PushSubscriptionData, NotificationLog } from '../types';
 
-const PUBLIC_VAPID_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || 'BEl62iUYgUivxIkv69yViEuiBIa-59y-vD3-p8_J93Jp39-5_k';
+// Valid 87-character P-256 Uncompressed VAPID Public Key for Apple APNs & Google FCM
+const PUBLIC_VAPID_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || 'BNFaDYNM3pl-V1arr_8bZ2ZT07NfiiyjA2pNN9BBiTl16IEabpqG9_R__ecAcFYgzigZwL5lm4psK538cniAWk4';
 
 function urlBase64ToUint8Array(base64String: string) {
   try {
@@ -278,7 +279,7 @@ export function initLocalHydrationReminders(getUserName: () => string) {
     const minutesStr = String(now.getMinutes()).padStart(2, '0');
     const currentTimeStr = `${hoursStr}:${minutesStr}`;
 
-    // 2-Minute Interval Check: ONLY triggers on current even minute (12:20, 12:22, 12:24...)
+    // 2-Minute Interval Check: ONLY triggers on current even minute (12:38, 12:40, 12:42...)
     const isEvenMinute = now.getMinutes() % 2 === 0;
     const slotKey = `${todayDateStr}_${currentTimeStr}`;
     const lastNotifiedSlot = localStorage.getItem('hydralove_last_notified_slot');
