@@ -15,6 +15,24 @@ function urlBase64ToUint8Array(base64String: string) {
   return outputArray;
 }
 
+export function getAbsoluteAppUrl(filename: string): string {
+  if (typeof window === 'undefined') return filename;
+  const origin = window.location.origin;
+  const path = window.location.pathname;
+
+  let dirPath = path.substring(0, path.lastIndexOf('/') + 1);
+  if (!dirPath || dirPath === '/') {
+    const parts = path.split('/').filter(Boolean);
+    if (parts.length > 0 && parts[0] !== 'index.html') {
+      dirPath = `/${parts[0]}/`;
+    } else {
+      dirPath = '/';
+    }
+  }
+
+  return `${origin}${dirPath}${filename}`;
+}
+
 export async function requestPushSubscription(userId: string): Promise<boolean> {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
     console.warn('Web Push is not supported in this browser.');
@@ -28,9 +46,10 @@ export async function requestPushSubscription(userId: string): Promise<boolean> 
       return false;
     }
 
+    const swUrl = getAbsoluteAppUrl('sw.js');
     let registration = await navigator.serviceWorker.getRegistration();
     if (!registration) {
-      registration = await navigator.serviceWorker.register('./sw.js');
+      registration = await navigator.serviceWorker.register(swUrl);
     }
 
     await navigator.serviceWorker.ready;
@@ -93,12 +112,8 @@ async function safeShowNotification(title: string, options: any): Promise<{ succ
     return { success: false, error: `Notification permission is "${perm}". Please allow notifications in phone settings.` };
   }
 
-  let iconUrl = 'apple-touch-icon.png';
-  let swUrl = './sw.js';
-  try {
-    iconUrl = new URL('apple-touch-icon.png', window.location.href).href;
-    swUrl = new URL('sw.js', window.location.href).href;
-  } catch {}
+  const iconUrl = getAbsoluteAppUrl('apple-touch-icon.png');
+  const swUrl = getAbsoluteAppUrl('sw.js');
 
   const safeOptions: any = {
     ...options,
@@ -142,7 +157,7 @@ async function safeShowNotification(title: string, options: any): Promise<{ succ
     } catch (swErr: any) {
       console.warn('Service worker showNotification error:', swErr);
       if (isMobile) {
-        return { success: false, error: `ServiceWorker error: ${swErr?.message || swErr}` };
+        return { success: false, error: `ServiceWorker 404/Register error: ${swErr?.message || swErr}` };
       }
     }
   }
