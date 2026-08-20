@@ -113,11 +113,11 @@ async function safeShowNotification(title: string, options: any): Promise<{ succ
 
   const isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent);
 
-  // Mobile browsers REQUIRE ServiceWorkerRegistration.showNotification()
   if ('serviceWorker' in navigator) {
     try {
       let reg: ServiceWorkerRegistration | undefined;
 
+      // 1. Try ready ServiceWorker Registration
       const readyReg = await Promise.race([
         navigator.serviceWorker.ready,
         new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 1500)),
@@ -129,9 +129,12 @@ async function safeShowNotification(title: string, options: any): Promise<{ succ
         const registrations = await navigator.serviceWorker.getRegistrations();
         if (registrations.length > 0) {
           reg = registrations[0];
-        } else {
-          reg = await navigator.serviceWorker.register(swUrl, { scope: getAbsoluteAppUrl('') });
         }
+      }
+
+      // 2. If no active registration, perform fresh registration
+      if (!reg) {
+        reg = await navigator.serviceWorker.register(swUrl, { scope: getAbsoluteAppUrl('') });
       }
 
       if (reg && typeof reg.showNotification === 'function') {
@@ -139,15 +142,26 @@ async function safeShowNotification(title: string, options: any): Promise<{ succ
         return { success: true };
       }
     } catch (swErr: any) {
-      console.warn('Service worker showNotification error:', swErr);
-      if (isMobile) {
-        return { success: false, error: `SW Error: ${swErr?.message || swErr}` };
+      console.warn('First SW showNotification attempt failed, retrying fresh registration:', swErr);
+      
+      // Retry fresh registration on error (handles bad cache / 404 recovery)
+      try {
+        const freshReg = await navigator.serviceWorker.register(swUrl, { scope: getAbsoluteAppUrl('') });
+        if (freshReg && typeof freshReg.showNotification === 'function') {
+          await freshReg.showNotification(title, safeOptions);
+          return { success: true };
+        }
+      } catch (retryErr: any) {
+        console.warn('SW fresh registration failed:', retryErr);
+        if (isMobile) {
+          return { success: false, error: `SW Register Error: ${retryErr?.message || retryErr}` };
+        }
       }
     }
   }
 
   if (isMobile) {
-    return { success: false, error: 'Mobile browser requires Service Worker notifications.' };
+    return { success: false, error: 'Mobile browser requires an active Service Worker.' };
   }
 
   // Desktop fallback
