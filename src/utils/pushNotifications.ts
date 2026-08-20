@@ -69,6 +69,47 @@ export async function requestPushSubscription(userId: string): Promise<boolean> 
   }
 }
 
+async function safeShowNotification(title: string, options: any): Promise<boolean> {
+  if (!('Notification' in window)) return false;
+
+  let perm = Notification.permission;
+  if (perm !== 'granted') {
+    perm = await Notification.requestPermission();
+  }
+  if (perm !== 'granted') return false;
+
+  let shownViaSW = false;
+
+  if ('serviceWorker' in navigator) {
+    try {
+      // Race serviceWorker.ready with a 1.5s timeout so it NEVER hangs
+      const reg: any = await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('SW Timeout')), 1500)),
+      ]);
+
+      if (reg && typeof reg.showNotification === 'function') {
+        await reg.showNotification(title, options);
+        shownViaSW = true;
+      }
+    } catch (e) {
+      console.warn('Service worker not ready or timed out, falling back to direct Notification:', e);
+    }
+  }
+
+  if (!shownViaSW) {
+    try {
+      new Notification(title, options);
+      return true;
+    } catch (err) {
+      console.warn('Direct notification error:', err);
+      return false;
+    }
+  }
+
+  return true;
+}
+
 export async function triggerTestNotification(userName: string = 'Friend'): Promise<{ success: boolean; message: string }> {
   if (!('Notification' in window)) {
     return { success: false, message: 'Notifications are not supported on this browser/device.' };
@@ -94,24 +135,23 @@ export async function triggerTestNotification(userName: string = 'Friend'): Prom
       vibrate: [200, 100, 200],
     };
 
-    if ('serviceWorker' in navigator) {
-      const reg = await navigator.serviceWorker.ready;
-      await reg.showNotification(title, options);
+    const success = await safeShowNotification(title, options);
 
-      // Schedule a 5-second delayed notification so user can lock/minimize screen
-      setTimeout(async () => {
-        const delayedOptions: any = {
-          body: `Drink water, ${userName}! 🌸 Your screen lock test succeeded!`,
-          icon: 'apple-touch-icon.png',
-          vibrate: [300, 100, 300],
-        };
-        await reg.showNotification('HydraLove ⏰ Delayed Test (5s)', delayedOptions);
-      }, 5000);
+    // Schedule 5s delayed notification to test screen lock
+    setTimeout(async () => {
+      const delayedOptions: any = {
+        body: `Drink water, ${userName}! 🌸 Your screen lock test succeeded!`,
+        icon: 'apple-touch-icon.png',
+        vibrate: [300, 100, 300],
+      };
+      await safeShowNotification('HydraLove ⏰ Delayed Test (5s)', delayedOptions);
+    }, 5000);
+
+    if (success) {
+      return { success: true, message: 'Test alert sent! Second test will fire in 5 seconds (lock your screen to test).' };
     } else {
-      new Notification(title, options);
+      return { success: false, message: 'Failed to display notification. Check OS permissions.' };
     }
-
-    return { success: true, message: 'Test alert sent! Second test will fire in 5 seconds (lock your screen to test).' };
   } catch (e: any) {
     return { success: false, message: e?.message || 'Failed to trigger notification.' };
   }
@@ -184,28 +224,18 @@ export function initLocalHydrationReminders(getUserName: () => string) {
     const lastNotifiedSlot = localStorage.getItem('hydralove_last_notified_slot');
 
     if (isScheduledSlot && lastNotifiedSlot !== slotKey) {
-      if ('Notification' in window && Notification.permission === 'granted') {
+      const name = getUserName() || 'Friend';
+      const title = 'Hydration Time 💧';
+      const options: any = {
+        body: `Hey ${name}! 💕 It's time for a little water break!`,
+        icon: 'apple-touch-icon.png',
+        badge: 'apple-touch-icon.png',
+        vibrate: [200, 100, 200],
+      };
+
+      const success = await safeShowNotification(title, options);
+      if (success) {
         localStorage.setItem('hydralove_last_notified_slot', slotKey);
-
-        const name = getUserName() || 'Friend';
-        const title = 'Hydration Time 💧';
-        const options: any = {
-          body: `Hey ${name}! 💕 It's time for a little water break!`,
-          icon: 'apple-touch-icon.png',
-          badge: 'apple-touch-icon.png',
-          vibrate: [200, 100, 200],
-        };
-
-        try {
-          if ('serviceWorker' in navigator) {
-            const reg = await navigator.serviceWorker.ready;
-            await reg.showNotification(title, options);
-          } else {
-            new Notification(title, options);
-          }
-        } catch (e) {
-          console.warn('Error showing reminder notification:', e);
-        }
       }
     }
   };

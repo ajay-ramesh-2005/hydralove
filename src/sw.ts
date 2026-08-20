@@ -1,6 +1,11 @@
 import { precacheAndRoute } from 'workbox-precaching';
+import { clientsClaim } from 'workbox-core';
 
 declare let self: any;
+
+// Force newly installed Service Worker to activate immediately
+self.skipWaiting();
+clientsClaim();
 
 // Precache static assets built by Vite
 precacheAndRoute(self.__WB_MANIFEST || []);
