@@ -217,6 +217,9 @@ export const App: React.FC = () => {
     }
 
     initLocalHydrationReminders(() => activeProfile?.name || '');
+    if (myUserId) {
+      requestPushSubscription(myUserId);
+    }
 
     return () => {
       window.removeEventListener('online', handleOnline);

@@ -1,0 +1,17 @@
+name: Hourly Push Reminders
+
+on:
+  schedule:
+    # Run every hour at minute 0 (03:00 - 18:00 UTC = 08:30 - 23:30 IST)
+    - cron: '0 3-18 * * *'
+  workflow_dispatch:
+
+jobs:
+  send-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Supabase Push Notification
+        run: |
+          curl -X POST "https://yrnhjicryhsvoxazigug.supabase.co/functions/v1/send-push" \
+            -H "Content-Type: application/json" \
+            -d '{"targetUserId": "all", "message": "Hydration Time 💧 Time for a little water break! 💕"}' || true
