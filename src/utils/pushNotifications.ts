@@ -28,7 +28,13 @@ export async function requestPushSubscription(userId: string): Promise<boolean> 
       return false;
     }
 
-    const registration = await navigator.serviceWorker.ready;
+    let registration = await navigator.serviceWorker.getRegistration();
+    if (!registration) {
+      registration = await navigator.serviceWorker.register('./sw.js');
+    }
+
+    await navigator.serviceWorker.ready;
+
     let subscription = await registration.pushManager.getSubscription();
 
     if (!subscription) {
@@ -87,7 +93,7 @@ async function safeShowNotification(title: string, options: any): Promise<{ succ
     return { success: false, error: `Notification permission is "${perm}". Please allow notifications in phone settings.` };
   }
 
-  // Construct absolute icon URL so ServiceWorker showNotification never fails due to invalid relative paths
+  // Construct absolute icon URL so ServiceWorker showNotification never fails due to relative path parsing
   let iconUrl = 'apple-touch-icon.png';
   try {
     iconUrl = new URL('apple-touch-icon.png', window.location.href).href;
@@ -99,40 +105,47 @@ async function safeShowNotification(title: string, options: any): Promise<{ succ
     badge: iconUrl,
   };
 
-  // 1. Try Service Worker showNotification first (Works on Mobile Chrome & iOS PWA)
+  // On Android Chrome & mobile browsers, new Notification() is forbidden (throws Illegal constructor).
+  // We MUST use ServiceWorkerRegistration.showNotification().
   if ('serviceWorker' in navigator) {
     try {
-      const reg: any = await Promise.race([
+      let reg: any = null;
+
+      // 1. Check existing service worker registrations
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      if (registrations.length > 0) {
+        reg = registrations[0];
+      }
+
+      // 2. If no registration found, register sw.js dynamically
+      if (!reg) {
+        reg = await navigator.serviceWorker.register('./sw.js');
+      }
+
+      // 3. Wait for service worker ready (up to 3s)
+      const readyReg: any = await Promise.race([
         navigator.serviceWorker.ready,
-        new Promise<any>((_, reject) => setTimeout(() => reject(new Error('SW Ready Timeout')), 1500)),
+        new Promise<any>((resolve) => setTimeout(() => resolve(reg), 3000)),
       ]);
 
-      if (reg && typeof reg.showNotification === 'function') {
-        await reg.showNotification(title, safeOptions);
+      const targetReg = readyReg || reg;
+
+      if (targetReg && typeof targetReg.showNotification === 'function') {
+        await targetReg.showNotification(title, safeOptions);
         return { success: true };
       }
     } catch (swErr: any) {
-      console.warn('SW ready showNotification failed, trying fallback registrations:', swErr?.message);
-    }
-
-    try {
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      if (registrations.length > 0 && typeof registrations[0].showNotification === 'function') {
-        await registrations[0].showNotification(title, safeOptions);
-        return { success: true };
-      }
-    } catch (regErr: any) {
-      console.warn('Fallback registrations showNotification failed:', regErr?.message);
+      console.warn('Service worker showNotification error:', swErr);
     }
   }
 
-  // 2. Direct Notification constructor fallback
+  // Fallback to direct Notification constructor for Desktop browsers where supported
   try {
     new Notification(title, safeOptions);
     return { success: true };
   } catch (directErr: any) {
-    console.warn('Direct Notification constructor failed:', directErr?.message);
-    return { success: false, error: directErr?.message || 'Could not display notification.' };
+    console.warn('Direct Notification constructor failed:', directErr);
+    return { success: false, error: directErr?.message || 'Could not display notification via Service Worker.' };
   }
 }
 
